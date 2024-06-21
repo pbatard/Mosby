@@ -30,6 +30,7 @@
 
 # Executables
 *.exe
+*.efi
 *.out
 *.app
 *.i*86
@@ -50,3 +51,29 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Visual Studio intermediate files
+*.suo
+*.opensdf
+*.opendb
+*.db*
+*.ipch
+*.vsidx
+
+# Output/Debug directories
+arm/
+aa64/
+ia32/
+x64/
+image/
+Build/
+
+# UEFI firmware images
+*.fd
+
+# Various ignorable files
+*.old
+*.new
+*.nope
+*.patch
+version.h

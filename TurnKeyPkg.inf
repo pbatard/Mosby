@@ -1,0 +1,61 @@
+## @file
+#  Component Description File for TurnKey.
+#
+#  This UEFI applucation sets up the certificates and keys for
+#  Secure Boot ownership for the user.
+#
+#  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
+#
+#  SPDX-License-Identifier: GPL-3.0-or-later
+#
+##
+
+[Defines]
+  INF_VERSION                = 0x00010005
+  BASE_NAME                  = TurnKey
+  FILE_GUID                  = C2803D90-B52D-4A2F-BEAD-23B9169002AB
+  MODULE_TYPE                = UEFI_APPLICATION
+  VERSION_STRING             = 1.0
+  ENTRY_POINT                = efi_main
+
+[Sources]
+  turnkey.c
+
+[Packages]
+  TurnKeyPkg.dec
+  MdePkg/MdePkg.dec
+  CryptoPkg/CryptoPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  BaseCryptLib
+  DebugLib
+  IntrinsicLib
+  MemoryAllocationLib
+  OpensslLib
+  PcdLib
+  PrintLib
+  SynchronizationLib
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiLib
+  UefiRuntimeServicesTableLib
+
+[Guids]
+  gEfiFileInfoGuid
+  gEfiFileSystemInfoGuid
+  gEfiSmbiosTableGuid
+  gEfiSmbios3TableGuid
+
+[Protocols]
+  gEfiDiskIoProtocolGuid
+  gEfiDiskIo2ProtocolGuid
+  gEfiLoadedImageProtocolGuid 
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiUnicodeCollationProtocolGuid
+  gEfiUnicodeCollation2ProtocolGuid
+
+[Pcd]
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultLang
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLang

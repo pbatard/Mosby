@@ -1,0 +1,21 @@
+## @file
+#  TurnKey Package
+#
+#  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
+#
+##
+
+[Defines]
+  DEC_SPECIFICATION              = 0x00010005
+  PACKAGE_NAME                   = TurnKeyPkg
+  PACKAGE_UNI_FILE               = TurnKeyPkg.uni
+  PACKAGE_GUID                   = 8F782584-E305-4360-B11B-A92C6380D1D6
+  PACKAGE_VERSION                = 1.0
+
+[Includes]
+  CryptoPkg/Library/Include
+  CryptoPkg/Library/OpensslLib/openssl/include
+  CryptoPkg/Library/OpensslLib/openssl/providers/common/include
+  CryptoPkg/Library/OpensslLib/openssl/providers/implementations/include
+  CryptoPkg/Library/OpensslLib/OpensslGen/include
+  CryptoPkg/Library/OpensslLib/OpensslGen/providers/common/include
