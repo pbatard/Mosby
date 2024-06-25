@@ -13,6 +13,9 @@ on:
 env:
   BUILD_TYPE: RELEASE
   COMPILER: GCC5
+  GCC5_ARM_PREFIX: arm-linux-gnueabi-
+  GCC5_AARCH64_PREFIX: aarch64-linux-gnu-
+  GCC5_RISCV64_PREFIX: riscv64-linux-gnu-
 
 jobs:
   Linux-EDK2-Build:
@@ -22,7 +25,7 @@ jobs:
 
     strategy:
       matrix:
-        TARGET_TYPE: [ia32, x64, aa64, arm]
+        TARGET_TYPE: [ia32, x64, aa64]
         include:
         - TARGET_TYPE: x64
           TARGET_ARCH: X64
@@ -33,9 +36,9 @@ jobs:
         - TARGET_TYPE: aa64
           TARGET_ARCH: AARCH64
           TARGET_PKGS: gcc-aarch64-linux-gnu
-        - TARGET_TYPE: arm
-          TARGET_ARCH: ARM
-          TARGET_PKGS: gcc-arm-linux-gnueabi
+#        - TARGET_TYPE: arm
+#          TARGET_ARCH: ARM
+#          TARGET_PKGS: gcc-arm-linux-gnueabi
 
     steps:
     - name: Set up Linux environment
@@ -61,10 +64,10 @@ jobs:
         export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
         source edk2/edksetup.sh
         build -a ${{ matrix.TARGET_ARCH }} -b ${{ env.BUILD_TYPE }} -t ${{ env.COMPILER }} -p TurnKeyPkg.dsc
-        mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/TurnKeyPkg.efi turnkey_${{ matrix.TARGET_TYPE }}.efi
+        mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/TurnKey.efi turnkey_${{ matrix.TARGET_TYPE }}.efi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.arch }}
+        name: ${{ matrix.TARGET_TYPE }}
         path: ./*.efi

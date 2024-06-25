@@ -20,7 +20,7 @@
 
 [BuildOptions]
   DEBUG_*_*_CC_FLAGS             = -DENABLE_DEBUG
-  RELEASE_*_*_CC_FLAGS           = -O2 -DMDEPKG_NDEBUG
+  RELEASE_*_*_CC_FLAGS           = -DMDEPKG_NDEBUG
   *_*_*_CC_FLAGS                 = -Wno-error=incompatible-pointer-types -Wno-error=unused-function -Wno-error=unused-variable -flto=auto -DDISABLE_NEW_DEPRECATED_INTERFACES
 
 !include MdePkg/MdeLibs.dsc.inc
