@@ -1,0 +1,70 @@
+name: Linux (gcc with EDK2)
+
+on:
+  workflow_dispatch:
+    branches: [main]
+  push:
+    branches: [main]
+    tags:
+      - '**'
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: RELEASE
+  COMPILER: GCC5
+
+jobs:
+  Linux-EDK2-Build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        TARGET_TYPE: [ia32, x64, aa64, arm]
+        include:
+        - TARGET_TYPE: x64
+          TARGET_ARCH: X64
+          TARGET_PKGS: nasm gcc-multilib
+        - TARGET_TYPE: ia32
+          TARGET_ARCH: IA32
+          TARGET_PKGS: nasm gcc-multilib
+        - TARGET_TYPE: aa64
+          TARGET_ARCH: AARCH64
+          TARGET_PKGS: gcc-aarch64-linux-gnu
+        - TARGET_TYPE: arm
+          TARGET_ARCH: ARM
+          TARGET_PKGS: gcc-arm-linux-gnueabi
+
+    steps:
+    - name: Set up Linux environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y --no-install-recommends install python3-distutils uuid-dev ${{ matrix.TARGET_PKGS }}
+
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up EDK2
+      run: |
+        git clone --recursive https://github.com/tianocore/edk2.git
+        # We must patch EDK2's OpenSSL to be able to import/export certificates and keys
+        patch --binary -d edk2 -p1 -i ../0001-OpensslLibFull.patch
+        make -C edk2/BaseTools
+
+    - name: Build UEFI application
+      run: |
+        export WORKSPACE=$PWD
+        export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
+        source edk2/edksetup.sh
+        build -a ${{ matrix.TARGET_ARCH }} -b ${{ env.BUILD_TYPE }} -t ${{ env.COMPILER }} -p TurnKeyPkg.dsc
+        mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/TurnKeyPkg.efi turnkey_${{ matrix.TARGET_TYPE }}.efi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.arch }}
+        path: ./*.efi

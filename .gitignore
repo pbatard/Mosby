@@ -75,5 +75,4 @@ Build/
 *.old
 *.new
 *.nope
-*.patch
 version.h

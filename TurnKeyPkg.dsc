@@ -21,7 +21,7 @@
 [BuildOptions]
   DEBUG_*_*_CC_FLAGS             = -DENABLE_DEBUG
   RELEASE_*_*_CC_FLAGS           = -O2 -DMDEPKG_NDEBUG
-  *_*_*_CC_FLAGS                 = -std=c99 -Wno-error=incompatible-pointer-types -DDISABLE_NEW_DEPRECATED_INTERFACES
+  *_*_*_CC_FLAGS                 = -Wno-error=incompatible-pointer-types -Wno-error=unused-function -Wno-error=unused-variable -flto=auto -DDISABLE_NEW_DEPRECATED_INTERFACES
 
 !include MdePkg/MdeLibs.dsc.inc
 
@@ -45,10 +45,15 @@
   MemoryAllocationLib|MdePkg/Library/UefiMemoryAllocationLib/UefiMemoryAllocationLib.inf
   PrintLib|MdePkg/Library/BasePrintLib/BasePrintLib.inf
   PcdLib|MdePkg/Library/BasePcdLibNull/BasePcdLibNull.inf
+  HiiLib|MdeModulePkg/Library/UefiHiiLib/UefiHiiLib.inf
+  UefiHiiServicesLib|MdeModulePkg/Library/UefiHiiServicesLib/UefiHiiServicesLib.inf
+  FileHandleLib|MdePkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
+  ShellLib|ShellPkg/Library/UefiShellLib/UefiShellLib.inf
+  SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
   UefiBootServicesTableLib|MdePkg/Library/UefiBootServicesTableLib/UefiBootServicesTableLib.inf
   UefiLib|MdePkg/Library/UefiLib/UefiLib.inf
   UefiRuntimeServicesTableLib|MdePkg/Library/UefiRuntimeServicesTableLib/UefiRuntimeServicesTableLib.inf
-  OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLib.inf
+  OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
 
 [LibraryClasses.IA32, LibraryClasses.X64, LibraryClasses.AARCH64]

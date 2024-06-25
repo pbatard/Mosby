@@ -31,14 +31,19 @@
   BaseMemoryLib
   BaseCryptLib
   DebugLib
+  FileHandleLib
+  HiiLib
   IntrinsicLib
   MemoryAllocationLib
   OpensslLib
   PcdLib
   PrintLib
+  ShellLib
+  SortLib
   SynchronizationLib
   UefiApplicationEntryPoint
   UefiBootServicesTableLib
+  UefiHiiServicesLib
   UefiLib
   UefiRuntimeServicesTableLib
 
