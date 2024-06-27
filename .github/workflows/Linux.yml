@@ -25,6 +25,9 @@ jobs:
 
     strategy:
       matrix:
+        # RISCV64 and ARM targets are disabled because RISCV64's GCC still produces
+        # memcpy refs even with -fno-builtin -fno-builtin-memcpy and the ARM linker
+        # is somehow unable to find the refs it needs in ArmSoftFloatLib...
         TARGET_TYPE: [ia32, x64, aa64]
         include:
         - TARGET_TYPE: x64
@@ -39,6 +42,9 @@ jobs:
 #        - TARGET_TYPE: arm
 #          TARGET_ARCH: ARM
 #          TARGET_PKGS: gcc-arm-linux-gnueabi
+#        - TARGET_TYPE: riscv64
+#          TARGET_ARCH: RISCV64
+#          TARGET_PKGS: gcc-riscv64-linux-gnu
 
     steps:
     - name: Set up Linux environment
@@ -55,7 +61,7 @@ jobs:
       run: |
         git clone --recursive https://github.com/tianocore/edk2.git
         # We must patch EDK2's OpenSSL to be able to import/export certificates and keys
-        patch --binary -d edk2 -p1 -i ../0001-OpensslLibFull.patch
+        patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
         make -C edk2/BaseTools
 
     - name: Build UEFI application

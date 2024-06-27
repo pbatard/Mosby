@@ -41,10 +41,11 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/encoder.h>
+#include <openssl/opensslv.h>
+#include <openssl/pem.h>
+#include <openssl/pkcs12.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
-#include <openssl/opensslv.h>
-#include <openssl/pkcs12.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
@@ -56,23 +57,25 @@ STATIC int Error_CB(CONST CHAR8 *str, UINTN len, VOID *u)
 }
 #define OSSL_REPORT_ERROR(msg) ERR_print_errors_cb(Error_CB, msg)
 
-STATIC INTN X509_add_ext_helper(X509 *cert, int nid, char *value)
+#define ReportOpenSSLError(msg) do { ERR_print_errors_cb(Error_CB, msg); } while(0)
+#define ReportOpenSSLErrorAndExit(msg, err) do { ERR_print_errors_cb(Error_CB, msg), Status = err; goto exit; } while(0)
+
+// Helper function to add X509 extensions
+EFI_STATUS AddExtension(X509 *Cert, INTN ExtNid, CONST CHAR8* ExtStr)
 {
-	X509V3_CTX ctx;
+	EFI_STATUS Status = EFI_SUCCESS;
+	X509_EXTENSION *ex = NULL;
 
-	X509V3_set_ctx_nodb(&ctx);
+	ex = X509V3_EXT_nconf_nid(NULL, NULL, ExtNid, (char *)ExtStr);
+	if (ex == NULL)
+		ReportOpenSSLErrorAndExit(L"X509V3_EXT_conf_nid", EFI_UNSUPPORTED);
 
-	X509V3_set_ctx(&ctx, NULL, cert, NULL, NULL, 0);
-	X509_EXTENSION *ex = X509V3_EXT_conf_nid(NULL, &ctx, nid, value);
-	if (ex == NULL) {
-		Print(L"ERROR: X509V3_EXT_conf_nid(%d, %s) failed", nid, value);
-		return 0;
-	}
+	if (!X509_add_ext(Cert, ex, -1))
+		ReportOpenSSLErrorAndExit(L"X509_add_ext", EFI_ACCESS_DENIED);
 
-	X509_add_ext(cert, ex, -1);
+exit:
 	X509_EXTENSION_free(ex);
-
-	return 1;
+	return Status;
 }
 
 STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
@@ -108,6 +111,31 @@ STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
 	Print(L"%a\n", Line);
 }
 
+EFI_STATUS WriteFile(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size, CONST BOOLEAN Backup)
+{
+	EFI_STATUS Status;
+	UINTN _Size = Size;
+	SHELL_FILE_HANDLE FileHandle = { 0 };
+
+	ShellDeleteFileByName(Path);
+
+	Status = ShellOpenFileByName(Path, &FileHandle, 
+		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
+	if (Status == EFI_SUCCESS)
+		Status = ShellWriteFile(FileHandle, &_Size, (VOID*)Buffer);
+	if (EFI_ERROR(Status))
+		Print(L"Could not write %s: %r\n", Path, Status);
+	ShellCloseFile(&FileHandle);
+	return Status;
+}
+
+enum {
+	DB = 0,
+	KEK,
+	PK,
+	MAX_CERT,
+};
+
 /*
  * Application entry-point
  */
@@ -116,123 +144,129 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	CONST CHAR16 DestPath[] = L"FS0:\\PK.pfx";
 	CONST CHAR8 DefaultSeed[] = "Turnkey crypto default seed";
+	CONST CHAR8 Password[] = "password";
 	EFI_STATUS Status;
 	UINT8 *Buffer = NULL;
-	OSSL_ENCODER_CTX* ectx = NULL;
-	EVP_PKEY* pk_key = NULL;
-	X509* pk_cert = NULL;
+	EVP_PKEY* Key[MAX_CERT] = { 0 };
+	X509* Cert[MAX_CERT] = { 0 };
 	PKCS12* p12 = NULL;
+	BIO* bio = NULL;
+	INTN Size, Index = 0;
 
-	// TODO: Test CPU flags for RDRAND
-	Print(L"X509 Test\n");
-
-	// Initialize the random generator
+	// Initialize the random generator and validate the platform
 	// TODO: Derive a seed from user input
 	RAND_seed(DefaultSeed, sizeof(DefaultSeed));
-	Print(L"RAND_status = %d\n", RAND_status());
-
-	pk_key = EVP_RSA_gen(2048);
-	if (pk_key == NULL) {
-		OSSL_REPORT_ERROR(L"EVP_RSA_gen()");
-		Status = EFI_NOT_FOUND;
-		goto out;
+	if (RAND_status() != 1) {
+		Print(L"ERROR: This platform does not meet the minimum security requirements.\n");
+		Status = EFI_UNSUPPORTED;
+		goto exit;
 	}
-	Print(L"PK RSA keypair was generated, type %d\n", EVP_PKEY_get_id(pk_key));
 
-	/* Allocate memory for the X509 structure. */
-	pk_cert = X509_new();
-	if (pk_cert == NULL) {
-		OSSL_REPORT_ERROR(L"X509_new()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
+	// Create a new RSA-2048 keypair
+	Key[Index] = EVP_RSA_gen(2048);
+	if (Key[Index] == NULL)
+		ReportOpenSSLErrorAndExit(L"EVP_RSA_gen()", EFI_NOT_FOUND);
+	Print(L"Generated RSA keypair...\n");
+
+	// Create a new X509 certificate
+	Cert[Index] = X509_new();
+	if (Cert[Index] == NULL)
+		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_NOT_FOUND);
 
 	// Set the certificate serial number.
 	ASN1_INTEGER* sn = ASN1_INTEGER_new();
 	// TODO: Derive a serial number from current date
-	ASN1_INTEGER_set(sn, 12345678);
-	if (!X509_set_serialNumber(pk_cert, sn))
+	ASN1_INTEGER_set(sn, 0x12345678);
+	if (!X509_set_serialNumber(Cert[Index], sn))
 		OSSL_REPORT_ERROR(L"X509_set_serialNumber()");
 	ASN1_INTEGER_free(sn);
 
 	// Set version
-	X509_set_version(pk_cert, 2);
+	X509_set_version(Cert[Index], 2);
 
 	// Set usage for code signing as a Certification Authority
-	X509_add_ext_helper(pk_cert, NID_basic_constraints, (char*)"critical,CA:TRUE");
-	X509_add_ext_helper(pk_cert, NID_key_usage, (char*)"critical,digitalSignature,keyEncipherment");
+	AddExtension(Cert[Index], NID_basic_constraints, "critical,CA:TRUE");
+	AddExtension(Cert[Index], NID_key_usage, "critical,digitalSignature,keyEncipherment");
 
 	// Set certificate validity to 20 years
 	ASN1_TIME* asn1time = ASN1_TIME_new();
 	ASN1_TIME_set(asn1time, time(NULL));
-	X509_set1_notBefore(pk_cert, asn1time);
-	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * 365 * 20 + 5));
-	X509_set1_notAfter(pk_cert, asn1time);
+	X509_set1_notBefore(Cert[Index], asn1time);
+	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * (365 * 20 + 5)));
+	X509_set1_notAfter(Cert[Index], asn1time);
 	ASN1_TIME_free(asn1time);
 
-	X509_NAME* name = X509_get_subject_name(pk_cert);
+	X509_NAME* name = X509_get_subject_name(Cert[Index]);
 	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8 *)"Turnkey PK", -1, -1, 0);
-	X509_set_issuer_name(pk_cert, name);
+	X509_set_issuer_name(Cert[Index], name);
 
 	// Certify and sign with the private key we created
-	if (!X509_set_pubkey(pk_cert, pk_key)) {
-		OSSL_REPORT_ERROR(L"X509_set_pubkey()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
-	if (X509_sign(pk_cert, pk_key, EVP_sha256()) == 0) {
-		OSSL_REPORT_ERROR(L"X509_sign()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
+	if (!X509_set_pubkey(Cert[Index], Key[Index]))
+		ReportOpenSSLErrorAndExit(L"X509_set_pubkey()", EFI_NOT_FOUND);
+	if (!X509_sign(Cert[Index], Key[Index], EVP_sha256()))
+		ReportOpenSSLErrorAndExit(L"X509_sign()", EFI_NOT_FOUND);
 	// Might as well verify the signature while we're at it
-	if (!X509_verify(pk_cert, pk_key))
-		OSSL_REPORT_ERROR(L"X509_verify()");
+	if (!X509_verify(Cert[Index], Key[Index]))
+		ReportOpenSSLError(L"X509_verify()");
+	Print(L"Generated X509 certificate...\n");
 
 	// Save as PKCS#12/PFX
 	UINT8 keyid[EVP_MAX_MD_SIZE];
 	unsigned int keyidlen = 0;
-	if (!X509_digest(pk_cert, EVP_sha256(), keyid, &keyidlen)) {
-		OSSL_REPORT_ERROR(L"X509_digest()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
-	X509_keyid_set1(pk_cert, keyid, keyidlen);
-	p12 = PKCS12_create("password", NULL, pk_key, pk_cert, NULL, NID_undef, NID_undef, 0, 0, 0);
-	if (p12 == NULL) {
-		OSSL_REPORT_ERROR(L"PKCS12_create()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
-	Print(L"PKCS12 GENERATION OKAY!\n");
+	if (!X509_digest(Cert[Index], EVP_sha256(), keyid, &keyidlen))
+		ReportOpenSSLErrorAndExit(L"X509_digest()", EFI_NOT_FOUND);
+	X509_keyid_set1(Cert[Index], keyid, keyidlen);
+	p12 = PKCS12_create(Password, NULL, Key[Index], Cert[Index], NULL, NID_undef, NID_undef, 0, 0, 0);
+	if (p12 == NULL)
+		ReportOpenSSLErrorAndExit(L"PKCS12_create()", EFI_NOT_FOUND);
+	Print(L"Generated PKCS#12 data...\n");
 
-	//NB: i2d_X509(pk_cert, &Buffer) can be used to dump .der of cert
-	INTN _Size = (INTN)i2d_PKCS12(p12, &Buffer);
-	if (_Size < 0) {
-		OSSL_REPORT_ERROR(L"i2d_PKCS12()");
-		Status = EFI_NOT_FOUND;
-		goto out;
-	}
-	UINTN Size = (UINTN)_Size;
-	SHELL_FILE_HANDLE  FileHandle = { 0 };
-	ShellDeleteFileByName(DestPath);
-	Status = ShellOpenFileByName(DestPath, &FileHandle,
-		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
-	if (Status == EFI_SUCCESS)
-		Status = ShellWriteFile(FileHandle, &Size, Buffer);
-	if (EFI_ERROR(Status))
-		Print(L"Could not write %s %r\n", DestPath, Status);
-	ShellCloseFile(&FileHandle);
-//	DumpBufferHex(Buffer, Size);
-
-out:
-	OPENSSL_free(Buffer);
+	// Create .pfx
+	Size = (INTN)i2d_PKCS12(p12, &Buffer);
 	PKCS12_free(p12);
-	OSSL_ENCODER_CTX_free(ectx);
-	X509_free(pk_cert);
-	EVP_PKEY_free(pk_key);
+	if (Size < 0)
+		ReportOpenSSLErrorAndExit(L"i2d_PKCS12()", EFI_NOT_FOUND);
+	Status = WriteFile(L"FS0:\\PK.pfx", Buffer, (UINTN)Size, FALSE);
+	OPENSSL_free(Buffer);
+
+	// Create .cer
+	bio = BIO_new(BIO_s_mem());
+	if (bio == NULL)
+		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_NOT_FOUND);
+	if (!PEM_write_bio_X509(bio, Cert[Index]))
+		ReportOpenSSLErrorAndExit(L"PEM_write_bio_X509()", EFI_NOT_FOUND);
+	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
+	if (Size <= 0)
+		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_NOT_FOUND);
+	Status = WriteFile(L"FS0:\\PK.cer", Buffer, (UINTN)Size, FALSE);
+	BIO_free(bio);
+
+	// Create .crt
+	Size = (INTN)i2d_X509(Cert[Index], &Buffer);
+	if (Size < 0)
+		ReportOpenSSLErrorAndExit(L"i2d_X509()", EFI_NOT_FOUND);
+	Status = WriteFile(L"FS0:\\PK.crt", Buffer, (UINTN)Size, FALSE);
+	OPENSSL_free(Buffer);
+
+	// Create .pem
+	bio = BIO_new(BIO_s_mem());
+	if (bio == NULL)
+		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_NOT_FOUND);
+	if (!PEM_write_bio_PKCS8PrivateKey(bio, Key[Index], EVP_aes_256_cbc(), Password, AsciiStrLen(Password), NULL, NULL))
+		ReportOpenSSLErrorAndExit(L"PEM_write_bio_PKCS8PrivateKey()", EFI_NOT_FOUND);
+	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
+	if (Size <= 0)
+		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_NOT_FOUND);
+	Status = WriteFile(L"FS0:\\PK.pem", Buffer, (UINTN)Size, FALSE);
+	BIO_free(bio);
+	Print(L"Generated all certificate and key files...\n");
+
+exit:
+	for (Index = 0; Index < MAX_CERT; Index++) {
+		X509_free(Cert[Index]);
+		EVP_PKEY_free(Key[Index]);
+	}
 
 	return Status;
 }
