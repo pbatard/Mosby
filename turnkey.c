@@ -49,6 +49,9 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+// None of the files we deal with should be larger than 1 MB
+#define MAX_FILE_SIZE (1024 * 1024)
+
 // For OpenSSL error reporting
 STATIC int Error_CB(CONST CHAR8 *str, UINTN len, VOID *u)
 {
@@ -88,7 +91,7 @@ STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
 		if (i != 0)
 			Print(L"%a\n", Line);
 		Line[0] = 0;
-//		AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "  %08x  ", i);
+		AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "  %08x  ", i);
 		for (j = 0, k = 0; k < 16; j++, k++) {
 			if (i + j < Size)
 				AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "%02x", Buffer[i + j]);
@@ -96,7 +99,6 @@ STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
 				AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "  ");
 			AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), " ");
 		}
-#if 0
 		AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), " ");
 		for (j = 0, k = 0; k < 16; j++, k++) {
 			if (i + j < Size) {
@@ -106,12 +108,11 @@ STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
 					AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "%c", Buffer[i + j]);
 			}
 		}
-#endif
 	}
 	Print(L"%a\n", Line);
 }
 
-EFI_STATUS WriteFile(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size, CONST BOOLEAN Backup)
+EFI_STATUS WriteFile(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size)
 {
 	EFI_STATUS Status;
 	UINTN _Size = Size;
@@ -121,11 +122,57 @@ EFI_STATUS WriteFile(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size, C
 
 	Status = ShellOpenFileByName(Path, &FileHandle, 
 		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
-	if (Status == EFI_SUCCESS)
-		Status = ShellWriteFile(FileHandle, &_Size, (VOID*)Buffer);
+	if (EFI_ERROR(Status)) {
+		Print(L"Could not open '%s': %r\n", Path, Status);
+		goto exit;
+	}
+	Status = ShellWriteFile(FileHandle, &_Size, (VOID*)Buffer);
 	if (EFI_ERROR(Status))
-		Print(L"Could not write %s: %r\n", Path, Status);
+		Print(L"Could not write '%s': %r\n", Path, Status);
+exit:
 	ShellCloseFile(&FileHandle);
+	return Status;
+}
+
+EFI_STATUS ReadFile(CONST CHAR16* Path, VOID** Buffer, UINTN* Size)
+{
+	EFI_STATUS Status;
+	SHELL_FILE_HANDLE FileHandle = { 0 };
+	UINT64 _Size;
+	VOID* _Buffer;
+
+	*Buffer = NULL;
+	*Size = 0;
+	Status = ShellOpenFileByName(Path, &FileHandle, EFI_FILE_MODE_READ, 0);
+	if (EFI_ERROR(Status)) {
+		Print(L"Could not open '%s': %r\n", Path, Status);
+		goto exit;
+	}
+	Status = ShellGetFileSize(FileHandle, &_Size);
+	if (EFI_ERROR(Status)) {
+		Print(L"Could not read '%s': %r\n", Path, Status);
+		goto exit;
+	}
+	if (_Size > MAX_FILE_SIZE) {
+		Print(L"Size of '%s' is too large\n", Path);
+		Status = EFI_UNSUPPORTED;
+		goto exit;
+	}
+	_Buffer = AllocateZeroPool(_Size);
+	if (_Buffer == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
+		goto exit;
+	}
+	*Size = (UINTN)_Size;
+	Status = ShellReadFile(FileHandle, Size, _Buffer);
+	if (EFI_ERROR(Status))
+		Print(L"Could not read '%s': %r\n", Path, Status);
+exit:
+	ShellCloseFile(&FileHandle);
+	if (EFI_ERROR(Status))
+		FreePool(_Buffer);
+	else
+		*Buffer = _Buffer;
 	return Status;
 }
 
@@ -147,6 +194,7 @@ EFI_STATUS EFIAPI efi_main(
 	CONST CHAR8 DefaultSeed[] = "Turnkey crypto default seed";
 	CONST CHAR8 Password[] = "password";
 	EFI_STATUS Status;
+	EFI_HANDLE Handle;
 	UINT8 *Buffer = NULL;
 	EVP_PKEY* Key[MAX_CERT] = { 0 };
 	X509* Cert[MAX_CERT] = { 0 };
@@ -163,16 +211,34 @@ EFI_STATUS EFIAPI efi_main(
 		goto exit;
 	}
 
+	// Read an existing cert file
+	Status = ReadFile(L"FS0:\\test.crt", (VOID**)&Buffer, (UINTN*)&Size);
+	if (EFI_ERROR(Status))
+		goto exit;
+	bio = BIO_new_mem_buf(Buffer, Size);
+	if (bio == NULL)
+		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
+	Cert[1] = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+	if (Cert[1] == NULL)
+		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_PROTOCOL_ERROR);
+	else
+		Print(L"Read Cert OKAY\n");
+//	DumpBufferHex(Buffer, Size); 
+	BIO_free(bio);
+	bio = NULL;
+	FreePool(Buffer);
+	Buffer = NULL;
+
 	// Create a new RSA-2048 keypair
 	Key[Index] = EVP_RSA_gen(2048);
 	if (Key[Index] == NULL)
-		ReportOpenSSLErrorAndExit(L"EVP_RSA_gen()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"EVP_RSA_gen()", EFI_PROTOCOL_ERROR);
 	Print(L"Generated RSA keypair...\n");
 
 	// Create a new X509 certificate
 	Cert[Index] = X509_new();
 	if (Cert[Index] == NULL)
-		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_PROTOCOL_ERROR);
 
 	// Set the certificate serial number.
 	ASN1_INTEGER* sn = ASN1_INTEGER_new();
@@ -203,9 +269,9 @@ EFI_STATUS EFIAPI efi_main(
 
 	// Certify and sign with the private key we created
 	if (!X509_set_pubkey(Cert[Index], Key[Index]))
-		ReportOpenSSLErrorAndExit(L"X509_set_pubkey()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"X509_set_pubkey()", EFI_PROTOCOL_ERROR);
 	if (!X509_sign(Cert[Index], Key[Index], EVP_sha256()))
-		ReportOpenSSLErrorAndExit(L"X509_sign()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"X509_sign()", EFI_PROTOCOL_ERROR);
 	// Might as well verify the signature while we're at it
 	if (!X509_verify(Cert[Index], Key[Index]))
 		ReportOpenSSLError(L"X509_verify()");
@@ -215,54 +281,55 @@ EFI_STATUS EFIAPI efi_main(
 	UINT8 keyid[EVP_MAX_MD_SIZE];
 	unsigned int keyidlen = 0;
 	if (!X509_digest(Cert[Index], EVP_sha256(), keyid, &keyidlen))
-		ReportOpenSSLErrorAndExit(L"X509_digest()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"X509_digest()", EFI_PROTOCOL_ERROR);
 	X509_keyid_set1(Cert[Index], keyid, keyidlen);
 	p12 = PKCS12_create(Password, NULL, Key[Index], Cert[Index], NULL, NID_undef, NID_undef, 0, 0, 0);
 	if (p12 == NULL)
-		ReportOpenSSLErrorAndExit(L"PKCS12_create()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"PKCS12_create()", EFI_PROTOCOL_ERROR);
 	Print(L"Generated PKCS#12 data...\n");
 
 	// Create .pfx
 	Size = (INTN)i2d_PKCS12(p12, &Buffer);
 	PKCS12_free(p12);
 	if (Size < 0)
-		ReportOpenSSLErrorAndExit(L"i2d_PKCS12()", EFI_NOT_FOUND);
-	Status = WriteFile(L"FS0:\\PK.pfx", Buffer, (UINTN)Size, FALSE);
+		ReportOpenSSLErrorAndExit(L"i2d_PKCS12()", EFI_PROTOCOL_ERROR);
+	Status = WriteFile(L"FS0:\\PK.pfx", Buffer, (UINTN)Size);
 	OPENSSL_free(Buffer);
 
 	// Create .cer
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL)
-		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
 	if (!PEM_write_bio_X509(bio, Cert[Index]))
-		ReportOpenSSLErrorAndExit(L"PEM_write_bio_X509()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"PEM_write_bio_X509()", EFI_PROTOCOL_ERROR);
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
-		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_NOT_FOUND);
-	Status = WriteFile(L"FS0:\\PK.cer", Buffer, (UINTN)Size, FALSE);
+		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
+	Status = WriteFile(L"FS0:\\PK.crt", Buffer, (UINTN)Size);
 	BIO_free(bio);
 
 	// Create .crt
 	Size = (INTN)i2d_X509(Cert[Index], &Buffer);
 	if (Size < 0)
-		ReportOpenSSLErrorAndExit(L"i2d_X509()", EFI_NOT_FOUND);
-	Status = WriteFile(L"FS0:\\PK.crt", Buffer, (UINTN)Size, FALSE);
+		ReportOpenSSLErrorAndExit(L"i2d_X509()", EFI_PROTOCOL_ERROR);
+	Status = WriteFile(L"FS0:\\PK.cer", Buffer, (UINTN)Size);
 	OPENSSL_free(Buffer);
 
 	// Create .pem
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL)
-		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
 	if (!PEM_write_bio_PKCS8PrivateKey(bio, Key[Index], EVP_aes_256_cbc(), Password, AsciiStrLen(Password), NULL, NULL))
-		ReportOpenSSLErrorAndExit(L"PEM_write_bio_PKCS8PrivateKey()", EFI_NOT_FOUND);
+		ReportOpenSSLErrorAndExit(L"PEM_write_bio_PKCS8PrivateKey()", EFI_PROTOCOL_ERROR);
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
-		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_NOT_FOUND);
-	Status = WriteFile(L"FS0:\\PK.pem", Buffer, (UINTN)Size, FALSE);
-	BIO_free(bio);
+		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
+	Status = WriteFile(L"FS0:\\PK.pem", Buffer, (UINTN)Size);
 	Print(L"Generated all certificate and key files...\n");
 
 exit:
+	if (bio != NULL)
+		BIO_free(bio);
 	for (Index = 0; Index < MAX_CERT; Index++) {
 		X509_free(Cert[Index]);
 		EVP_PKEY_free(Key[Index]);
