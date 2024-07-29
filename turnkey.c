@@ -25,7 +25,6 @@
 #include <Library/DevicePathLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PrintLib.h>
-#include <Library/ShellLib.h>
 #include <Library/UefiApplicationEntryPoint.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
@@ -49,8 +48,15 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
-// None of the files we deal with should be larger than 1 MB
-#define MAX_FILE_SIZE (1024 * 1024)
+#include "console.h"
+#include "file.h"
+
+enum {
+	DB = 0,
+	KEK,
+	PK,
+	MAX_CERT,
+};
 
 // For OpenSSL error reporting
 STATIC int Error_CB(CONST CHAR8 *str, UINTN len, VOID *u)
@@ -81,108 +87,6 @@ exit:
 	return Status;
 }
 
-STATIC VOID DumpBufferHex(VOID* Buf, UINTN Size)
-{
-	UINT8* Buffer = (UINT8*)Buf;
-	UINTN i, j, k;
-	CHAR8 Line[80] = "";
-
-	for (i = 0; i < Size; i += 16) {
-		if (i != 0)
-			Print(L"%a\n", Line);
-		Line[0] = 0;
-		AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "  %08x  ", i);
-		for (j = 0, k = 0; k < 16; j++, k++) {
-			if (i + j < Size)
-				AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "%02x", Buffer[i + j]);
-			else
-				AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "  ");
-			AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), " ");
-		}
-		AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), " ");
-		for (j = 0, k = 0; k < 16; j++, k++) {
-			if (i + j < Size) {
-				if ((Buffer[i + j] < 32) || (Buffer[ i + j] > 126))
-					AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), ".");
-				else
-					AsciiSPrint (&Line[AsciiStrLen (Line)], 80 - AsciiStrLen (Line), "%c", Buffer[i + j]);
-			}
-		}
-	}
-	Print(L"%a\n", Line);
-}
-
-EFI_STATUS WriteFile(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size)
-{
-	EFI_STATUS Status;
-	UINTN _Size = Size;
-	SHELL_FILE_HANDLE FileHandle = { 0 };
-
-	ShellDeleteFileByName(Path);
-
-	Status = ShellOpenFileByName(Path, &FileHandle, 
-		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not open '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	Status = ShellWriteFile(FileHandle, &_Size, (VOID*)Buffer);
-	if (EFI_ERROR(Status))
-		Print(L"Could not write '%s': %r\n", Path, Status);
-exit:
-	ShellCloseFile(&FileHandle);
-	return Status;
-}
-
-EFI_STATUS ReadFile(CONST CHAR16* Path, VOID** Buffer, UINTN* Size)
-{
-	EFI_STATUS Status;
-	SHELL_FILE_HANDLE FileHandle = { 0 };
-	UINT64 _Size;
-	VOID* _Buffer;
-
-	*Buffer = NULL;
-	*Size = 0;
-	Status = ShellOpenFileByName(Path, &FileHandle, EFI_FILE_MODE_READ, 0);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not open '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	Status = ShellGetFileSize(FileHandle, &_Size);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not read '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	if (_Size > MAX_FILE_SIZE) {
-		Print(L"Size of '%s' is too large\n", Path);
-		Status = EFI_UNSUPPORTED;
-		goto exit;
-	}
-	_Buffer = AllocateZeroPool(_Size);
-	if (_Buffer == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		goto exit;
-	}
-	*Size = (UINTN)_Size;
-	Status = ShellReadFile(FileHandle, Size, _Buffer);
-	if (EFI_ERROR(Status))
-		Print(L"Could not read '%s': %r\n", Path, Status);
-exit:
-	ShellCloseFile(&FileHandle);
-	if (EFI_ERROR(Status))
-		FreePool(_Buffer);
-	else
-		*Buffer = _Buffer;
-	return Status;
-}
-
-enum {
-	DB = 0,
-	KEK,
-	PK,
-	MAX_CERT,
-};
-
 /*
  * Application entry-point
  */
@@ -193,8 +97,10 @@ EFI_STATUS EFIAPI efi_main(
 {
 	CONST CHAR8 DefaultSeed[] = "Turnkey crypto default seed";
 	CONST CHAR8 Password[] = "password";
+	CHAR16 *FileName, *Title[3];
 	EFI_STATUS Status;
-	EFI_HANDLE Handle;
+	EFI_FILE_HANDLE File = NULL;
+	EFI_HANDLE Handle = NULL;
 	UINT8 *Buffer = NULL;
 	EVP_PKEY* Key[MAX_CERT] = { 0 };
 	X509* Cert[MAX_CERT] = { 0 };
@@ -211,8 +117,15 @@ EFI_STATUS EFIAPI efi_main(
 		goto exit;
 	}
 
-	// Read an existing cert file
-	Status = ReadFile(L"FS0:\\test.crt", (VOID**)&Buffer, (UINTN*)&Size);
+	Title[0] = L"Select cert file";
+	Title[1] = NULL;
+	Status = SimpleFileSelector(&Handle, Title, L"\\", L".crt", &FileName);
+	if (EFI_ERROR(Status))
+		goto exit;
+	Status = SimpleFileOpen(Handle, FileName, &File, EFI_FILE_MODE_READ);
+	if (EFI_ERROR(Status))
+		goto exit;
+	Status = SimpleFileReadAll(File, (UINTN*)&Size, (VOID**)&Buffer);
 	if (EFI_ERROR(Status))
 		goto exit;
 	bio = BIO_new_mem_buf(Buffer, Size);
@@ -223,7 +136,6 @@ EFI_STATUS EFIAPI efi_main(
 		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_PROTOCOL_ERROR);
 	else
 		Print(L"Read Cert OKAY\n");
-//	DumpBufferHex(Buffer, Size); 
 	BIO_free(bio);
 	bio = NULL;
 	FreePool(Buffer);
@@ -293,7 +205,7 @@ EFI_STATUS EFIAPI efi_main(
 	PKCS12_free(p12);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(L"i2d_PKCS12()", EFI_PROTOCOL_ERROR);
-	Status = WriteFile(L"FS0:\\PK.pfx", Buffer, (UINTN)Size);
+	Status = ShellWriteAll(L"FS0:\\PK.pfx", Buffer, (UINTN)Size);
 	OPENSSL_free(Buffer);
 
 	// Create .cer
@@ -305,14 +217,14 @@ EFI_STATUS EFIAPI efi_main(
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
-	Status = WriteFile(L"FS0:\\PK.crt", Buffer, (UINTN)Size);
+	Status = ShellWriteAll(L"FS0:\\PK.crt", Buffer, (UINTN)Size);
 	BIO_free(bio);
 
 	// Create .crt
 	Size = (INTN)i2d_X509(Cert[Index], &Buffer);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(L"i2d_X509()", EFI_PROTOCOL_ERROR);
-	Status = WriteFile(L"FS0:\\PK.cer", Buffer, (UINTN)Size);
+	Status = ShellWriteAll(L"FS0:\\PK.cer", Buffer, (UINTN)Size);
 	OPENSSL_free(Buffer);
 
 	// Create .pem
@@ -324,7 +236,7 @@ EFI_STATUS EFIAPI efi_main(
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
-	Status = WriteFile(L"FS0:\\PK.pem", Buffer, (UINTN)Size);
+	Status = ShellWriteAll(L"FS0:\\PK.pem", Buffer, (UINTN)Size);
 	Print(L"Generated all certificate and key files...\n");
 
 exit:

@@ -20,6 +20,8 @@
 
 [Sources]
   turnkey.c
+  console.c
+  file.c
 
 [Packages]
   TurnKeyPkg.dec
