@@ -1,5 +1,5 @@
 ## @file
-#  Component Description File for TurnKey.
+#  Component description file for Secure Boot Kick.
 #
 #  This UEFI applucation sets up the certificates and keys for
 #  Secure Boot ownership for the user.
@@ -12,19 +12,19 @@
 
 [Defines]
   INF_VERSION                = 0x00010005
-  BASE_NAME                  = TurnKey
+  BASE_NAME                  = Kick
   FILE_GUID                  = C2803D90-B52D-4A2F-BEAD-23B9169002AB
   MODULE_TYPE                = UEFI_APPLICATION
   VERSION_STRING             = 1.0
   ENTRY_POINT                = efi_main
 
 [Sources]
-  turnkey.c
+  kick.c
   console.c
   file.c
 
 [Packages]
-  TurnKeyPkg.dec
+  KickPkg.dec
   MdePkg/MdePkg.dec
   CryptoPkg/CryptoPkg.dec
 

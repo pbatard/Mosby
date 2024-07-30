@@ -1,5 +1,5 @@
 /*
- * TurnKey
+ * Secure Boot Kick - Secure Boot Key Installation/Creation
  * Copyright © 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -95,7 +95,7 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	CONST CHAR8 DefaultSeed[] = "Turnkey crypto default seed";
+	CONST CHAR8 DefaultSeed[] = "SB Kick crypto default seed";
 	CONST CHAR8 Password[] = "password";
 	CHAR16 *FileName, *Title[3];
 	EFI_STATUS Status;
@@ -176,7 +176,7 @@ EFI_STATUS EFIAPI efi_main(
 	ASN1_TIME_free(asn1time);
 
 	X509_NAME* name = X509_get_subject_name(Cert[Index]);
-	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8 *)"Turnkey PK", -1, -1, 0);
+	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8 *)"Kick PK", -1, -1, 0);
 	X509_set_issuer_name(Cert[Index], name);
 
 	// Certify and sign with the private key we created

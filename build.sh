@@ -4,8 +4,8 @@
 export WORKSPACE=$PWD
 export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
 source edk2/edksetup.sh
-build -a X64 -b RELEASE -t GCC5 -p TurnKeyPkg.dsc
-cp Build/RELEASE_GCC5/X64/TurnKey.efi image
+build -a X64 -b RELEASE -t GCC5 -p KickPkg.dsc
+cp Build/RELEASE_GCC5/X64/Kick.efi image
 # QEMU execution is much faster when '-enable-kvm -cpu host' can be used. However this requires root 
 if [ "$EUID" -eq 0 ]; then
   CPU_OPT="-enable-kvm -cpu host"

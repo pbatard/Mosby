@@ -1,5 +1,5 @@
 ## @file
-#  TurnKey Application
+#  Secure Boot Kick Application
 #
 #  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
 #
@@ -8,7 +8,7 @@
 ##
 
 [Defines]
-  PLATFORM_NAME                  = TurnKeyPkg
+  PLATFORM_NAME                  = KickPkg
   PLATFORM_GUID                  = 8F782584-E305-4360-B11B-A92C6380D1D6
   PLATFORM_VERSION               = 1.0
   DSC_SPECIFICATION              = 0x00010005
@@ -75,4 +75,4 @@
 ###################################################################################################
 
 [Components]
-  TurnKeyPkg.inf
+  KickPkg.inf
