@@ -19,9 +19,11 @@
   ENTRY_POINT                = efi_main
 
 [Sources]
-  kick.c
   console.c
   file.c
+  kick.c
+  pki.c
+  utf8.c
 
 [Packages]
   KickPkg.dec
@@ -32,17 +34,14 @@
   BaseLib
   BaseMemoryLib
   BaseCryptLib
-  DebugLib
   FileHandleLib
-  HiiLib
   IntrinsicLib
   MemoryAllocationLib
   OpensslLib
   PcdLib
   PrintLib
   ShellLib
-  SortLib
-  SynchronizationLib
+  TimeBaseLib
   UefiApplicationEntryPoint
   UefiBootServicesTableLib
   UefiHiiServicesLib

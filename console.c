@@ -27,7 +27,9 @@
 
 #include <Uefi/UefiBaseType.h>
 
-STATIC __inline INTN CountLines(CHAR16 *StrArray[])
+STATIC __inline INTN CountLines(
+	IN CONST CHAR16 *StrArray[]
+)
 {
 	INTN i = 0;
 
@@ -47,7 +49,9 @@ EFI_INPUT_KEY ConsoleGetKeystroke(VOID)
 	return Key;
 }
 
-INTN ConsoleCheckForKeystroke(CHAR16 Key)
+INTN ConsoleCheckForKeystroke(
+	IN CHAR16 Key
+)
 {
 	EFI_INPUT_KEY Input;
 	EFI_STATUS Status;
@@ -68,8 +72,16 @@ INTN ConsoleCheckForKeystroke(CHAR16 Key)
 	return 0;
 }
 
-EFI_STATUS ConsolePrintBoxAt(CHAR16 *StrArray[], INTN Highlight, INTN StartCol,
-	INTN StartRow, INTN SizeCols, INTN SizeRows, INTN Offset, INTN Lines)
+EFI_STATUS ConsolePrintBoxAt(
+	IN CONST CHAR16 *StrArray[],
+	IN INTN Highlight,
+	IN INTN StartCol,
+	IN INTN StartRow,
+	IN INTN SizeCols,
+	IN INTN SizeRows,
+	IN INTN Offset,
+	IN INTN Lines
+)
 {
 	INTN i;
 	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
@@ -143,7 +155,7 @@ EFI_STATUS ConsolePrintBoxAt(CHAR16 *StrArray[], INTN Highlight, INTN StartCol,
 		Line[SizeCols - 1] = BOXDRAW_VERTICAL;
 		Line[SizeCols] = L'\0';
 		if (LineNum >= 0 && LineNum < Lines) {
-			CHAR16 *Str = StrArray[LineNum];
+			CONST CHAR16 *Str = StrArray[LineNum];
 			INTN Len = StrLen(Str);
 			INTN Col = (SizeCols - 2 - Len) / 2;
 
@@ -171,7 +183,10 @@ EFI_STATUS ConsolePrintBoxAt(CHAR16 *StrArray[], INTN Highlight, INTN StartCol,
 	return EFI_SUCCESS;
 }
 
-VOID ConsolePrintBox(CHAR16 *StrArray[], INTN Highlight)
+VOID ConsolePrintBox(
+	IN CONST CHAR16 *StrArray[],
+	IN INTN Highlight
+)
 {
 	EFI_SIMPLE_TEXT_OUTPUT_MODE SavedConsoleMode;
 	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
@@ -190,7 +205,11 @@ VOID ConsolePrintBox(CHAR16 *StrArray[], INTN Highlight)
 	Console->SetAttribute(Console, SavedConsoleMode.Attribute);
 }
 
-INTN ConsoleSelect(CHAR16 *Title[], CHAR16* Selectors[], INTN Start)
+INTN ConsoleSelect(
+	IN CONST CHAR16 *Title[],
+	IN CONST CHAR16* Selectors[],
+	IN INTN Start
+)
 {
 	EFI_SIMPLE_TEXT_OUTPUT_MODE SavedConsoleMode;
 	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
@@ -282,19 +301,32 @@ INTN ConsoleSelect(CHAR16 *Title[], CHAR16* Selectors[], INTN Start)
 }
 
 
-INTN ConsoleYesNo(CHAR16 *StrArray[])
+INTN ConsoleYesNo(
+	IN CONST CHAR16 *StrArray[]
+)
 {
-	return ConsoleSelect(StrArray, (CHAR16 *[]){ L"No", L"Yes", NULL }, 0);
+	return ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"No", L"Yes", NULL }, 0);
 }
 
-VOID ConsoleAlertBox(CHAR16 **Title)
+INTN ConsoleOkCancel(
+	IN CONST CHAR16 *StrArray[]
+)
 {
-	ConsoleSelect(Title, (CHAR16 *[]){ L"OK", 0 }, 0);
+	return ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"OK", L"Cancel", NULL }, 0);
 }
 
-VOID ConsoleErrorBox(CHAR16 *Err)
+VOID ConsoleAlertBox(
+	IN CONST CHAR16 **Title
+)
 {
-	CHAR16 **ErrArray = (CHAR16 *[]){
+	ConsoleSelect(Title, (CONST CHAR16 *[]){ L"OK", 0 }, 0);
+}
+
+VOID ConsoleErrorBox(
+	IN CONST CHAR16 *Err
+)
+{
+	CONST CHAR16 **ErrArray = (CONST CHAR16 *[]){
 		L"ERROR",
 		L"",
 		0,
@@ -306,9 +338,12 @@ VOID ConsoleErrorBox(CHAR16 *Err)
 	ConsoleAlertBox(ErrArray);
 }
 
-VOID ConsoleError(CHAR16 *Err, EFI_STATUS Status)
+VOID ConsoleError(
+	IN CONST CHAR16 *Err,
+	IN CONST EFI_STATUS Status
+)
 {
-	CHAR16 **ErrArray = (CHAR16 *[]){
+	CONST CHAR16 **ErrArray = (CONST CHAR16 *[]){
 		L"ERROR",
 		L"",
 		0,

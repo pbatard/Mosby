@@ -16,74 +16,76 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <Base.h>
-#include <Uefi.h>
-
-#include <Library/BaseLib.h>
-#include <Library/BaseCryptLib.h>
-#include <Library/BaseMemoryLib.h>
-#include <Library/DevicePathLib.h>
-#include <Library/MemoryAllocationLib.h>
-#include <Library/PrintLib.h>
-#include <Library/UefiApplicationEntryPoint.h>
-#include <Library/UefiBootServicesTableLib.h>
-#include <Library/UefiDriverEntryPoint.h>
-#include <Library/UefiLib.h>
-#include <Library/UefiRuntimeServicesTableLib.h>
-
-#include <Uefi/UefiBaseType.h>
-
-#undef _WIN32
-#undef _WIN64
-#define OPENSSL_NO_DEPRECATED 0
-#include <openssl/asn1.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/encoder.h>
-#include <openssl/opensslv.h>
-#include <openssl/pem.h>
-#include <openssl/pkcs12.h>
-#include <openssl/rand.h>
-#include <openssl/rsa.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-
+#include "kick.h"
 #include "console.h"
 #include "file.h"
+#include "pki.h"
 
-enum {
-	DB = 0,
-	KEK,
-	PK,
-	MAX_CERT,
-};
+EFI_HANDLE gBaseImageHandle = NULL;
+BOOLEAN gOptionSilent = FALSE;
 
-// For OpenSSL error reporting
-STATIC int Error_CB(CONST CHAR8 *str, UINTN len, VOID *u)
+EFI_STATUS ParseList(
+	IN CONST CHAR16 *ListFileName,
+	OUT INSTALLABLE_COLLECTION *Installable
+)
 {
-	Print(L"ERROR: %s %a\n", (CHAR16*)u, str);
-	return 0;
-}
-#define OSSL_REPORT_ERROR(msg) ERR_print_errors_cb(Error_CB, msg)
+	CONST CHAR8 *TypeString;
+	UINTN i, Index;
+	EFI_STATUS Status;
 
-#define ReportOpenSSLError(msg) do { ERR_print_errors_cb(Error_CB, msg); } while(0)
-#define ReportOpenSSLErrorAndExit(msg, err) do { ERR_print_errors_cb(Error_CB, msg), Status = err; goto exit; } while(0)
+	SetMem((VOID *)Installable, sizeof(INSTALLABLE_COLLECTION), 0);
 
-// Helper function to add X509 extensions
-EFI_STATUS AddExtension(X509 *Cert, INTN ExtNid, CONST CHAR8* ExtStr)
-{
-	EFI_STATUS Status = EFI_SUCCESS;
-	X509_EXTENSION *ex = NULL;
+	/* NB: SimpleFileReadAllByPath() adds an extra NUL to the data read */
+	Status = SimpleFileReadAllByPath(ListFileName, &Installable->ListDataSize, (VOID**)&Installable->ListData);
+	if (EFI_ERROR(Status))
+		goto exit;
 
-	ex = X509V3_EXT_nconf_nid(NULL, NULL, ExtNid, (char *)ExtStr);
-	if (ex == NULL)
-		ReportOpenSSLErrorAndExit(L"X509V3_EXT_conf_nid", EFI_UNSUPPORTED);
-
-	if (!X509_add_ext(Cert, ex, -1))
-		ReportOpenSSLErrorAndExit(L"X509_add_ext", EFI_ACCESS_DENIED);
+	for (i = 0; i < Installable->ListDataSize; i++)
+		if (Installable->ListData[i] == '\r' || Installable->ListData[i] == '\n')
+			Installable->ListData[i] = 0;
+	for (i = 0; i < Installable->ListDataSize; ) {
+		/* Ignore whitespaces and control characters */
+		while (Installable->ListData[i] <= ' ' && i < Installable->ListDataSize)
+			i++;
+		if (i >= Installable->ListDataSize)
+			break;
+		if (Installable->ListData[i] == '#') {
+			/* Ignore comments */
+		} else if (Installable->ListData[i] == '[') {
+			if (AsciiStrCmp(&Installable->ListData[i], "[SILENT]") == 0) {
+				gOptionSilent = TRUE;
+			} else {
+				Status = EFI_NO_MAPPING;
+				ReportErrorAndExit(L"Unrecognized option '%a'", &Installable->ListData[i]);
+			};
+		} else {
+			for (Index = 0; Index < MAX_TYPES; Index++) {
+				TypeString = BlobName(Index);
+				if (i + AsciiStrLen(TypeString) >= Installable->ListDataSize)
+					continue;
+				if (AsciiStrnCmp(TypeString, &Installable->ListData[i], AsciiStrLen(TypeString)) != 0)
+					continue;
+				if (!IsWhiteSpace(Installable->ListData[i + AsciiStrLen(TypeString)]))
+					continue;
+				i += AsciiStrLen(TypeString);
+				while (IsWhiteSpace(Installable->ListData[i]) && i < Installable->ListDataSize)
+					i++;
+				if (Installable->List[Index].NumEntries < MAX_NUM_ENTRIES)
+					Installable->List[Index].Path[Installable->List[Index].NumEntries++] = &Installable->ListData[i];
+				break;
+			}
+			if (Index >= MAX_TYPES) {
+				Status = EFI_NO_MAPPING;
+				ReportErrorAndExit(L"Could not parse '%s'", ListFileName);
+				break;
+			}
+		}
+		while (Installable->ListData[i] != '\0' && i < Installable->ListDataSize)
+			i++;
+	}
+	Status = EFI_SUCCESS;
 
 exit:
-	X509_EXTENSION_free(ex);
 	return Status;
 }
 
@@ -95,157 +97,150 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	CONST CHAR8 DefaultSeed[] = "SB Kick crypto default seed";
-	CONST CHAR8 Password[] = "password";
-	CHAR16 *FileName, *Title[3];
 	EFI_STATUS Status;
-	EFI_FILE_HANDLE File = NULL;
-	EFI_HANDLE Handle = NULL;
-	UINT8 *Buffer = NULL;
-	EVP_PKEY* Key[MAX_CERT] = { 0 };
-	X509* Cert[MAX_CERT] = { 0 };
-	PKCS12* p12 = NULL;
-	BIO* bio = NULL;
-	INTN Size, Index = 0;
+	UINTN Type, Entry;
+	CHAR16 Path[MAX_PATH];
+	INSTALLABLE_COLLECTION Installable;
 
-	// Initialize the random generator and validate the platform
-	// TODO: Derive a seed from user input
-	RAND_seed(DefaultSeed, sizeof(DefaultSeed));
-	if (RAND_status() != 1) {
-		Print(L"ERROR: This platform does not meet the minimum security requirements.\n");
-		Status = EFI_UNSUPPORTED;
+	gBaseImageHandle = BaseImageHandle;
+
+	/* 1. Verify that the platform is in Setup mode */
+	// TODO: Reboot into UEFI firmware if not. Or can we just force setup and reboot?
+
+	/* 2. Initialize the random generator and validate the platform */
+	Status = InitializePki();
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"This platform does not meet the minimum security requirements.");
+
+	/* 3. Parse and validate the list file */
+	Status = ParseList(LISTFILE_NAME, &Installable);
+	if (EFI_ERROR(Status))
 		goto exit;
+	if (Installable.List[PK].NumEntries > 1) {
+		ConsoleAlertBox(
+			(CONST CHAR16 *[]){
+				L"WARNING",
+				L"",
+				L"More than one PK was specified in the list file.",
+				L"Only the first one will be used.",
+				NULL
+			});
+		Installable.List[PK].NumEntries = 1;
+	};
+
+	/* 4. Prompt the user about the changes we are going to make */
+	if (!gOptionSilent) {
+		INTN Sel = ConsoleOkCancel(
+			(CONST CHAR16 *[]){
+				L"This application will update your Secure Boot entries using the latest",
+				L"database and OS provider data, as well as set a UNIQUE system-specific",
+				L"root certificate, that is not under the control of any third-party.",
+				L"",
+				L"It will also allow you to create/install your own Secure Boot signing key.",
+				L"",
+				L"If this is not what you want, please select 'Cancel' now.",
+				NULL
+			});
+		if (Sel != 0)
+			goto exit;
 	}
 
-	Title[0] = L"Select cert file";
-	Title[1] = NULL;
-	Status = SimpleFileSelector(&Handle, Title, L"\\", L".crt", &FileName);
-	if (EFI_ERROR(Status))
-		goto exit;
-	Status = SimpleFileOpen(Handle, FileName, &File, EFI_FILE_MODE_READ);
-	if (EFI_ERROR(Status))
-		goto exit;
-	Status = SimpleFileReadAll(File, (UINTN*)&Size, (VOID**)&Buffer);
-	if (EFI_ERROR(Status))
-		goto exit;
-	bio = BIO_new_mem_buf(Buffer, Size);
-	if (bio == NULL)
-		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
-	Cert[1] = PEM_read_bio_X509(bio, NULL, NULL, NULL);
-	if (Cert[1] == NULL)
-		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_PROTOCOL_ERROR);
-	else
-		Print(L"Read Cert OKAY\n");
-	BIO_free(bio);
-	bio = NULL;
-	FreePool(Buffer);
-	Buffer = NULL;
+	/* 5. Load and validate the support files (KEKs, DBs, DBX, etc) */
+	for (Type = 0; Type < MAX_TYPES; Type++) {
+		for (Entry = 0; Entry < Installable.List[Type].NumEntries && Installable.List[Type].Path[Entry] != NULL; Entry++) {
 
-	// Create a new RSA-2048 keypair
-	Key[Index] = EVP_RSA_gen(2048);
-	if (Key[Index] == NULL)
-		ReportOpenSSLErrorAndExit(L"EVP_RSA_gen()", EFI_PROTOCOL_ERROR);
-	Print(L"Generated RSA keypair...\n");
+			/* DB types have a special PROMPT or GENERATE mode */
+			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[GENERATE]") == 0)
+				continue;
 
-	// Create a new X509 certificate
-	Cert[Index] = X509_new();
-	if (Cert[Index] == NULL)
-		ReportOpenSSLErrorAndExit(L"X509_new()", EFI_PROTOCOL_ERROR);
+			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[PROMPT]") == 0) {
+				INTN Sel = ConsoleSelect(
+					(CONST CHAR16 *[]){
+						L"DB credentials installation",
+						L"",
+						L"Do you want to SELECT an existing Secure Boot signing certificate",
+						L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
+						L"any certificate for your own usage)?",
+						L"",
+						L"If you don't know what to pick, we recommend to GENERATE new signing",
+						L"credentials, so that you will be able to sign your own Secure Boot",
+						L"binaries for this system.",
+						NULL
+					},
+					(CONST CHAR16 *[]){
+						L"SELECT",
+						L"GENERATE",
+						L"DON'T INSTALL",
+						NULL
+					}, 1);
+				// TODO: handle Esc
+				if (Sel == 0) {
+					Installable.List[DB].Path[Entry] = "[SELECT]";
+				} else if (Sel == 1) {
+					Installable.List[DB].Path[Entry] = "[GENERATE]";
+					continue;
+				} else {
+					Installable.List[DB].Path[Entry] = "[NONE]";
+					continue;
+				}
+				break;
+			}
 
-	// Set the certificate serial number.
-	ASN1_INTEGER* sn = ASN1_INTEGER_new();
-	// TODO: Derive a serial number from current date
-	ASN1_INTEGER_set(sn, 0x12345678);
-	if (!X509_set_serialNumber(Cert[Index], sn))
-		OSSL_REPORT_ERROR(L"X509_set_serialNumber()");
-	ASN1_INTEGER_free(sn);
+			Status = Utf8ToUcs2(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Could not convert '%a'", Installable.List[Type].Path[Entry]);
 
-	// Set version
-	X509_set_version(Cert[Index], 2);
+			if (StrCmp(Path, L"[SELECT]") == 0) {
+				CHAR16 *Blah, Title[80];
+				EFI_HANDLE h = NULL;
+				UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select %a %s",
+					BlobName(Type), (Type == DBX) ? L"binary" : L"certificate");
+				Status = SimpleFileSelector(&h, 
+					(CONST CHAR16 *[]){
+						L"",
+						Title,
+						NULL
+					}, L"\\", (Type == DBX) ? L".bin|.esl" : L".cer|.crt", &Blah);
+				if (EFI_ERROR(Status))
+					continue;
+				StrCpyS(Path, ARRAY_SIZE(Path), Blah);
+				FreePool(Blah);
+			}
 
-	// Set usage for code signing as a Certification Authority
-	AddExtension(Cert[Index], NID_basic_constraints, "critical,CA:TRUE");
-	AddExtension(Cert[Index], NID_key_usage, "critical,digitalSignature,keyEncipherment");
+			if (Type == DBX)
+				Installable.List[Type].Blob[Entry] = ReadDbx(Path);
+			else
+				Installable.List[Type].Blob[Entry] = ReadCertificate(Path);
 
-	// Set certificate validity to 20 years
-	ASN1_TIME* asn1time = ASN1_TIME_new();
-	ASN1_TIME_set(asn1time, time(NULL));
-	X509_set1_notBefore(Cert[Index], asn1time);
-	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * (365 * 20 + 5)));
-	X509_set1_notAfter(Cert[Index], asn1time);
-	ASN1_TIME_free(asn1time);
+			if (Installable.List[Type].Blob[Entry] == NULL)
+				goto exit;
+			Print(L"%a[%d] = '%s'\n", BlobName(Type), Entry, Path);
+		}
+	}
 
-	X509_NAME* name = X509_get_subject_name(Cert[Index]);
-	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8 *)"Kick PK", -1, -1, 0);
-	X509_set_issuer_name(Cert[Index], name);
+	/* 6. Generate a keyless PK cert if none was specified */
+	if (Installable.List[PK].Blob[0] == NULL) {
+		Installable.List[PK].Blob[0] = GenerateCredentials("Kick PK", NULL);
+		if (Installable.List[PK].Blob[0] == NULL)
+			goto exit;
+	}
 
-	// Certify and sign with the private key we created
-	if (!X509_set_pubkey(Cert[Index], Key[Index]))
-		ReportOpenSSLErrorAndExit(L"X509_set_pubkey()", EFI_PROTOCOL_ERROR);
-	if (!X509_sign(Cert[Index], Key[Index], EVP_sha256()))
-		ReportOpenSSLErrorAndExit(L"X509_sign()", EFI_PROTOCOL_ERROR);
-	// Might as well verify the signature while we're at it
-	if (!X509_verify(Cert[Index], Key[Index]))
-		ReportOpenSSLError(L"X509_verify()");
-	Print(L"Generated X509 certificate...\n");
-
-	// Save as PKCS#12/PFX
-	UINT8 keyid[EVP_MAX_MD_SIZE];
-	unsigned int keyidlen = 0;
-	if (!X509_digest(Cert[Index], EVP_sha256(), keyid, &keyidlen))
-		ReportOpenSSLErrorAndExit(L"X509_digest()", EFI_PROTOCOL_ERROR);
-	X509_keyid_set1(Cert[Index], keyid, keyidlen);
-	p12 = PKCS12_create(Password, NULL, Key[Index], Cert[Index], NULL, NID_undef, NID_undef, 0, 0, 0);
-	if (p12 == NULL)
-		ReportOpenSSLErrorAndExit(L"PKCS12_create()", EFI_PROTOCOL_ERROR);
-	Print(L"Generated PKCS#12 data...\n");
-
-	// Create .pfx
-	Size = (INTN)i2d_PKCS12(p12, &Buffer);
-	PKCS12_free(p12);
-	if (Size < 0)
-		ReportOpenSSLErrorAndExit(L"i2d_PKCS12()", EFI_PROTOCOL_ERROR);
-	Status = ShellWriteAll(L"FS0:\\PK.pfx", Buffer, (UINTN)Size);
-	OPENSSL_free(Buffer);
-
-	// Create .cer
-	bio = BIO_new(BIO_s_mem());
-	if (bio == NULL)
-		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
-	if (!PEM_write_bio_X509(bio, Cert[Index]))
-		ReportOpenSSLErrorAndExit(L"PEM_write_bio_X509()", EFI_PROTOCOL_ERROR);
-	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
-	if (Size <= 0)
-		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
-	Status = ShellWriteAll(L"FS0:\\PK.crt", Buffer, (UINTN)Size);
-	BIO_free(bio);
-
-	// Create .crt
-	Size = (INTN)i2d_X509(Cert[Index], &Buffer);
-	if (Size < 0)
-		ReportOpenSSLErrorAndExit(L"i2d_X509()", EFI_PROTOCOL_ERROR);
-	Status = ShellWriteAll(L"FS0:\\PK.cer", Buffer, (UINTN)Size);
-	OPENSSL_free(Buffer);
-
-	// Create .pem
-	bio = BIO_new(BIO_s_mem());
-	if (bio == NULL)
-		ReportOpenSSLErrorAndExit(L"BIO_new()", EFI_OUT_OF_RESOURCES);
-	if (!PEM_write_bio_PKCS8PrivateKey(bio, Key[Index], EVP_aes_256_cbc(), Password, AsciiStrLen(Password), NULL, NULL))
-		ReportOpenSSLErrorAndExit(L"PEM_write_bio_PKCS8PrivateKey()", EFI_PROTOCOL_ERROR);
-	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
-	if (Size <= 0)
-		ReportOpenSSLErrorAndExit(L"BIO_get_mem_data()", EFI_PROTOCOL_ERROR);
-	Status = ShellWriteAll(L"FS0:\\PK.pem", Buffer, (UINTN)Size);
-	Print(L"Generated all certificate and key files...\n");
+	/* 7. Generate DB credentials if requested */
+	for (Entry = 0; Entry < Installable.List[DB].NumEntries &&
+		AsciiStrCmp(Installable.List[DB].Path[Entry], "[GENERATE]") != 0; Entry++);
+	if (Entry < Installable.List[DB].NumEntries) {
+		VOID *Key;
+		Installable.List[DB].Blob[Entry] = GenerateCredentials("Secure Boot signing", &Key);
+		if (Installable.List[DB].Blob[Entry] == NULL)
+			goto exit;
+		Status = SaveCredentials(Installable.List[DB].Blob[Entry], Key, L"DB");
+		if (EFI_ERROR(Status))
+			goto exit;
+	}
+	Status = EFI_SUCCESS;
 
 exit:
-	if (bio != NULL)
-		BIO_free(bio);
-	for (Index = 0; Index < MAX_CERT; Index++) {
-		X509_free(Cert[Index]);
-		EVP_PKEY_free(Key[Index]);
-	}
+	FreePool(Installable.ListData);
 
 	return Status;
 }

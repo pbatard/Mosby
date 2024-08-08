@@ -19,22 +19,90 @@
 #include <Base.h>
 #include <Uefi.h>
 #include <Guid/FileInfo.h>
-#include <Protocol/LoadedImage.h>
+#include <Library/UefiLib.h>
 #include <Uefi/UefiBaseType.h>
 
-// None of the files we deal with should be larger than 1 MB
+/* None of the files we deal with should be larger than 1 MB */
 #define MAX_FILE_SIZE (1024 * 1024)
 
-EFI_STATUS GeneratePath(CHAR16* Name, EFI_LOADED_IMAGE_PROTOCOL *LoadedImage, EFI_DEVICE_PATH **Path, CHAR16 **PathName);
-EFI_STATUS SimpleFileOpenByHandle(EFI_HANDLE Device, CHAR16 *Name, EFI_FILE_HANDLE *File, UINT64 Mode);
-EFI_STATUS SimpleFileOpen(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_HANDLE *File, UINT64 Mode);
-EFI_STATUS SimpleFileClose(EFI_FILE_HANDLE File);
-EFI_STATUS SimpleDirReadAllByHandle(EFI_HANDLE Image, EFI_FILE_HANDLE File, CHAR16* Name, EFI_FILE_INFO **Entries, UINTN *Count);
-EFI_STATUS SimpleDirReadAll(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_INFO **Entries, UINTN *Count);
-EFI_STATUS SimpleFileReadAll(EFI_FILE_HANDLE File, UINTN *Size, VOID **Buffer);
-EFI_STATUS SimpleFileWriteAll(EFI_FILE_HANDLE File, UINTN Size, VOID *Buffer);
-EFI_STATUS SimpleVolumeSelector(CHAR16 **Title, CHAR16 **Selected, EFI_HANDLE *Handle);
-EFI_STATUS SimpleDirFilter(EFI_HANDLE Image, CHAR16 *Name, CHAR16 *Filter, CHAR16 ***Result, UINTN *Count, EFI_FILE_INFO **Entries);
-EFI_STATUS SimpleFileSelector(EFI_HANDLE *Image, CHAR16 **Title, CHAR16 *Name, CHAR16 *Filter, CHAR16 **Result);
-EFI_STATUS ShellWriteAll(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size);
-EFI_STATUS ShellReadAll(CONST CHAR16* Path, VOID** Buffer, UINTN* Size);
+/* None of the paths we deal with should be longer than 512 codepoints */
+#define MAX_PATH 512
+
+EFI_STATUS SimpleFileOpenByHandle(
+	IN CONST EFI_HANDLE Device,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_HANDLE *File,
+	IN CONST UINT64 Mode
+);
+
+EFI_STATUS SimpleFileOpen(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_HANDLE *File,
+	IN CONST UINT64 Mode
+);
+
+EFI_STATUS SimpleFileClose(
+	IN CONST EFI_FILE_HANDLE File
+);
+
+EFI_STATUS SimpleDirReadAllByHandle(
+	IN CONST EFI_FILE_HANDLE File,
+	IN CONST CHAR16* Name,
+	OUT EFI_FILE_INFO **Entries,
+	OUT UINTN *Count
+);
+
+EFI_STATUS SimpleDirReadAll(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_INFO **Entries,
+	OUT UINTN *Count
+);
+
+EFI_STATUS SimpleFileReadAll(
+	IN CONST EFI_FILE_HANDLE File,
+	OUT UINTN *Size,
+	OUT VOID **Buffer
+);
+
+EFI_STATUS SimpleFileWriteAll(
+	IN CONST EFI_FILE_HANDLE File,
+	IN CONST UINTN Size,
+	IN CONST VOID *Buffer
+);
+
+EFI_STATUS SimpleVolumeSelector(
+	IN CONST CHAR16 **Title,
+	OUT CHAR16 **Selected,
+	OUT EFI_HANDLE *Handle
+);
+
+EFI_STATUS SimpleDirFilter(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	IN CONST CHAR16 *Filter,
+	OUT CHAR16 ***Result,
+	OUT UINTN *Count,
+	OUT EFI_FILE_INFO **Entries
+);
+
+EFI_STATUS SimpleFileSelector(
+	IN OUT EFI_HANDLE *Image,
+	IN CONST CHAR16 **Title,
+	IN CONST CHAR16 *Name,
+	IN CONST CHAR16 *Filter,
+	OUT CHAR16 **Result
+);
+
+EFI_STATUS SimpleFileReadAllByPath(
+	IN CONST CHAR16* Path,
+	OUT UINTN *Size,
+	OUT VOID **Buffer
+);
+
+EFI_STATUS SimpleFileWriteAllByPath(
+	IN CONST CHAR16* Path,
+	IN CONST UINTN Size,
+	IN CONST VOID *Buffer
+);

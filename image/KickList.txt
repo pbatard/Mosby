@@ -1,0 +1,11 @@
+[SILENT]
+# This is a comment
+PK FS0:\certs\ms_db1.crt
+DB certs\ms_db1.crt
+DB certs\ms_db2.cer
+DB [GENERATE]
+DBX certs\DBX.bin
+MOK certs\ms_db3.cer
+DBT certs\ms_db4.cer
+KEK certs\ms_kek1.cer
+KEK certs\ms_kek2.cer

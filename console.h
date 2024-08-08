@@ -16,16 +16,58 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-EFI_INPUT_KEY ConsoleGetKeystroke(VOID);
-INTN ConsoleCheckForKeystroke(CHAR16 Key);
-EFI_STATUS ConsolePrintBoxAt(CHAR16 *StrArray[], INTN Highlight, INTN StartCol,
-	INTN StartRow, INTN SizeCols, INTN SizeRows, INTN Offset, INTN Lines);
-VOID ConsolePrintBox(CHAR16 *StrArray[], INTN Highlight);
-INTN ConsoleSelect(CHAR16 *Title[], CHAR16* Selectors[], INTN Start);
-INTN ConsoleYesNo(CHAR16 *StrArray[]);
-VOID ConsoleAlertBox(CHAR16 **Title);
-VOID ConsoleErrorBox(CHAR16 *Err);
-VOID ConsoleError(CHAR16 *Err, EFI_STATUS Status);
-VOID ConsoleReset(VOID);
+#include <Base.h>
+#include <Uefi.h>
 
 #define NOSEL 0x7fffffff
+
+EFI_INPUT_KEY ConsoleGetKeystroke(VOID);
+
+INTN ConsoleCheckForKeystroke(
+	IN CHAR16 Key
+);
+
+EFI_STATUS ConsolePrintBoxAt(
+	IN CONST CHAR16 *StrArray[],
+	IN INTN Highlight,
+	IN INTN StartCol,
+	IN INTN StartRow,
+	IN INTN SizeCols,
+	IN INTN SizeRows,
+	IN INTN Offset,
+	IN INTN Lines
+);
+
+VOID ConsolePrintBox(
+	IN CONST CHAR16 *StrArray[],
+	IN INTN Highlight
+);
+
+INTN ConsoleSelect(
+	IN CONST CHAR16 *Title[],
+	IN CONST CHAR16* Selectors[],
+	IN INTN Start
+);
+
+INTN ConsoleYesNo(
+	IN CONST CHAR16 *StrArray[]
+);
+
+INTN ConsoleOkCancel(
+	IN CONST CHAR16 *StrArray[]
+);
+
+VOID ConsoleAlertBox(
+	IN CONST CHAR16 **Title
+);
+
+VOID ConsoleErrorBox(
+	IN CONST CHAR16 *Err
+);
+
+VOID ConsoleError(
+	IN CONST CHAR16 *Err,
+	IN CONST EFI_STATUS Status
+);
+
+VOID ConsoleReset(VOID);

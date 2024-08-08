@@ -15,27 +15,27 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <Library/BaseLib.h>
-#include <Library/BaseMemoryLib.h>
-#include <Library/DevicePathLib.h>
-#include <Library/MemoryAllocationLib.h>
-#include <Library/PrintLib.h>
-#include <Library/ShellLib.h>
-#include <Library/UefiBootServicesTableLib.h>
-#include <Library/UefiLib.h>
+#include "kick.h"
+#include "console.h"
+#include "file.h"
 
 #include <Guid/FileSystemInfo.h>
 #include <Guid/FileSystemVolumeLabelInfo.h>
+#include <Protocol/LoadedImage.h>
+#include <Library/ShellLib.h>
 
-#include <console.h>
-#include <file.h>
-
-EFI_STATUS GeneratePath(CHAR16* Name, EFI_LOADED_IMAGE_PROTOCOL *LoadedImage, EFI_DEVICE_PATH **Path, CHAR16 **PathName)
+STATIC EFI_STATUS GeneratePath(
+	IN CONST CHAR16* Name,
+	IN CONST EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
+	OUT EFI_DEVICE_PATH **Path,
+	OUT CHAR16 **PathName)
 {
 	UINTN PathLen;
 	EFI_STATUS Status = EFI_SUCCESS;
-	CHAR16 *DevicePathString = ConvertDevicePathToText(LoadedImage->FilePath, FALSE, FALSE), *Found = NULL;
+	CHAR16 *DevicePathString, *Found = NULL;
 	INTN i;
+
+	DevicePathString = ConvertDevicePathToText(LoadedImage->FilePath, TRUE, TRUE);
 
 	for (i = 0; i < StrLen(DevicePathString); i++) {
 		if (DevicePathString[i] == '/')
@@ -78,13 +78,18 @@ error:
 	return Status;
 }
 
-EFI_STATUS SimpleFileOpenByHandle(EFI_HANDLE Device, CHAR16 *Name, EFI_FILE_HANDLE *File, UINT64 Mode)
+EFI_STATUS SimpleFileOpenByHandle(
+	IN CONST EFI_HANDLE DeviceHandle,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_HANDLE *File,
+	IN CONST UINT64 Mode
+)
 {
 	EFI_STATUS Status;
 	EFI_FILE_IO_INTERFACE *Drive;
 	EFI_FILE_HANDLE Root;
 
-	Status = gBS->HandleProtocol(Device, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&Drive);
+	Status = gBS->HandleProtocol(DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&Drive);
 
 	if (EFI_ERROR(Status)) {
 		Print(L"Unable to find simple file protocol: %r\n", Status);
@@ -98,13 +103,18 @@ EFI_STATUS SimpleFileOpenByHandle(EFI_HANDLE Device, CHAR16 *Name, EFI_FILE_HAND
 		goto error;
 	}
 
-	Status = Root->Open(Root, File, Name, Mode, 0);
+	Status = Root->Open(Root, File, (CHAR16*)Name, Mode, 0);
 
 error:
 	return Status;
 }
 
-EFI_STATUS SimpleFileOpen(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_HANDLE *File, UINT64 Mode)
+EFI_STATUS SimpleFileOpen(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_HANDLE *File,
+	IN CONST UINT64 Mode
+)
 {
 	EFI_STATUS Status;
 	EFI_HANDLE Device;
@@ -134,12 +144,19 @@ EFI_STATUS SimpleFileOpen(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_HANDLE *File,
 	return Status;
 }
 
-EFI_STATUS SimpleFileClose(EFI_FILE_HANDLE File)
+EFI_STATUS SimpleFileClose(
+	IN CONST EFI_FILE_HANDLE File
+)
 {
-	return File->Close(File);
+	return (File == NULL) ? EFI_SUCCESS : File->Close(File);
 }
 
-EFI_STATUS SimpleDirReadAllByHandle(EFI_HANDLE Image, EFI_FILE_HANDLE File, CHAR16* Name, EFI_FILE_INFO **Entries, UINTN *Count)
+EFI_STATUS SimpleDirReadAllByHandle(
+	IN CONST EFI_FILE_HANDLE File,
+	IN CONST CHAR16* Name,
+	OUT EFI_FILE_INFO **Entries,
+	OUT UINTN *Count
+)
 {
 	EFI_STATUS Status;
 	INTN i;
@@ -189,7 +206,12 @@ out:
 	return Status;
 }
 
-EFI_STATUS SimpleDirReadAll(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_INFO **Entries, UINTN *Count)
+EFI_STATUS SimpleDirReadAll(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	OUT EFI_FILE_INFO **Entries,
+	OUT UINTN *Count
+)
 {
 	EFI_FILE_HANDLE File;
 	EFI_STATUS Status;
@@ -200,10 +222,14 @@ EFI_STATUS SimpleDirReadAll(EFI_HANDLE Image, CHAR16 *Name, EFI_FILE_INFO **Entr
 		return Status;
 	}
 
-	return SimpleDirReadAllByHandle(Image, File, Name, Entries, Count);
+	return SimpleDirReadAllByHandle(File, Name, Entries, Count);
 }
 
-EFI_STATUS SimpleFileReadAll(EFI_FILE_HANDLE File, UINTN *Size, VOID **Buffer)
+EFI_STATUS SimpleFileReadAll(
+	IN CONST EFI_FILE_HANDLE File,
+	OUT UINTN *Size,
+	OUT VOID **Buffer
+)
 {
 	EFI_STATUS Status;
 	EFI_FILE_INFO *Info;
@@ -226,7 +252,8 @@ EFI_STATUS SimpleFileReadAll(EFI_FILE_HANDLE File, UINTN *Size, VOID **Buffer)
 	}
 
 	/* Might use memory mapped, so align up to nearest page */
-	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size, 4096));
+	/* Also + 1 so the data is always NUL terminated */
+	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size + 1, 4096));
 	if (*Buffer == NULL) {
 		Print(L"Failed to allocate buffer of size %d\n", *Size);
 		return EFI_OUT_OF_RESOURCES;
@@ -236,12 +263,20 @@ EFI_STATUS SimpleFileReadAll(EFI_FILE_HANDLE File, UINTN *Size, VOID **Buffer)
 	return Status;
 }
 
-EFI_STATUS SimpleFileWriteAll(EFI_FILE_HANDLE File, UINTN Size, VOID *Buffer)
+EFI_STATUS SimpleFileWriteAll(
+	IN CONST EFI_FILE_HANDLE File,
+	IN CONST UINTN Size,
+	IN CONST VOID *Buffer
+)
 {
-	return File->Write(File, &Size, Buffer);
+	return File->Write(File, (UINTN*)&Size, (VOID*)Buffer);
 }
 
-EFI_STATUS SimpleVolumeSelector(CHAR16 **Title, CHAR16 **Selected, EFI_HANDLE *Handle)
+EFI_STATUS SimpleVolumeSelector(
+	IN CONST CHAR16 **Title,
+	OUT CHAR16 **Selected,
+	OUT EFI_HANDLE *Handle
+)
 {
 	UINTN Count, i;
 	EFI_HANDLE *VolumeHandles = NULL;
@@ -294,7 +329,7 @@ EFI_STATUS SimpleVolumeSelector(CHAR16 **Title, CHAR16 **Selected, EFI_HANDLE *H
 	}
 	Entries[i] = NULL;
 
-	Val = ConsoleSelect(Title, Entries, 0);
+	Val = ConsoleSelect(Title, (CONST CHAR16**)Entries, 0);
 
 	if (Val >= 0) {
 		*Selected = AllocateZeroPool((StrLen(Entries[Val]) + 1) * sizeof(CHAR16));
@@ -317,7 +352,14 @@ EFI_STATUS SimpleVolumeSelector(CHAR16 **Title, CHAR16 **Selected, EFI_HANDLE *H
 	return EFI_SUCCESS;
 }
 
-EFI_STATUS SimpleDirFilter(EFI_HANDLE Image, CHAR16 *Name, CHAR16 *Filter, CHAR16 ***Result, UINTN *Count, EFI_FILE_INFO **Entries)
+EFI_STATUS SimpleDirFilter(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name,
+	IN CONST CHAR16 *Filter,
+	OUT CHAR16 ***Result,
+	OUT UINTN *Count,
+	OUT EFI_FILE_INFO **Entries
+)
 {
 	EFI_STATUS Status;
 	UINTN Len, Total, Offset = StrLen(Filter), i, c, FilterCount = 1;
@@ -433,17 +475,24 @@ out:
 	return Status;
 }
 
-EFI_STATUS SimpleFileSelector(EFI_HANDLE *Image, CHAR16 **Title, CHAR16 *Name, CHAR16 *Filter, CHAR16 **Result)
+EFI_STATUS SimpleFileSelector(
+	IN OUT EFI_HANDLE *Image,
+	IN CONST CHAR16 **Title,
+	IN CONST CHAR16 *Name,
+	IN CONST CHAR16 *Filter,
+	OUT CHAR16 **Result
+)
 {
 	EFI_STATUS Status;
 	EFI_HANDLE Handle;
 	EFI_FILE_INFO *Info;
 	UINTN i, Count, Select, Len;
-	CHAR16 **Entries, *NewName, *Selected, *VolumeName;
+	CHAR16 **Entries, *CurName, *NewName, *Selected, *VolumeName;
 
+	CurName = (CHAR16*)Name;
 	*Result = NULL;
-	if (Name == NULL)
-		Name = L"\\";
+	if (CurName == NULL)
+		CurName = L"\\";
 	if (Filter == NULL)
 		Filter = L"";
 	if (*Image == NULL) {
@@ -454,22 +503,22 @@ EFI_STATUS SimpleFileSelector(EFI_HANDLE *Image, CHAR16 **Title, CHAR16 *Name, C
 		*Image = Handle;
 	}
 
-	NewName = AllocateZeroPool((StrLen(Name) + 1) * sizeof(CHAR16));
+	NewName = AllocateZeroPool((StrLen(CurName) + 1) * sizeof(CHAR16));
 	if (NewName == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
 		goto out;
 	}
 
-	StrCpyS(NewName, StrLen(Name) + 1, Name);
-	Name = NewName;
+	StrCpyS(NewName, StrLen(CurName) + 1, CurName);
+	CurName = NewName;
 
 redo:
-	Status = SimpleDirFilter(*Image, Name, Filter, &Entries, &Count, &Info);
+	Status = SimpleDirFilter(*Image, CurName, Filter, &Entries, &Count, &Info);
 
 	if (EFI_ERROR(Status))
 		goto out_free_name;
 
-	Select = ConsoleSelect(Title, Entries, 0);
+	Select = ConsoleSelect(Title, (CONST CHAR16**)Entries, 0);
 	if (Select < 0) {
 		/* ESC key */
 		Status = EFI_ABORTED;
@@ -486,120 +535,144 @@ redo:
 			FreePool(Info);
 			goto redo;
 		} else if (StrCmp(Selected, L"../") == 0) {
-			i = StrLen(Name) - 1;
+			i = StrLen(CurName) - 1;
 
-			for (i = StrLen(Name); i > 0; i--) {
-				if (Name[i] == '\\')
+			for (i = StrLen(CurName); i > 0; i--) {
+				if (CurName[i] == '\\')
 					break;
 			}
 			if (i == 0)
 				i = 1;
 
-			if (StrCmp(Name, L"\\") != 0 && StrCmp(&Name[i], L"..") != 0) {
-				Name[i] = '\0';
+			if (StrCmp(CurName, L"\\") != 0 && StrCmp(&CurName[i], L"..") != 0) {
+				CurName[i] = '\0';
 				FreePool(Info);
 				goto redo;
 			}
 		}
-		NewName = AllocateZeroPool((StrLen(Name) + Len + 2) * sizeof(CHAR16));
+		NewName = AllocateZeroPool((StrLen(CurName) + Len + 2) * sizeof(CHAR16));
 		if (NewName == NULL) {
 			Status = EFI_OUT_OF_RESOURCES;
 			goto out_free;
 		}
-		StrCpyS(NewName, StrLen(Name) + Len + 2, Name);
+		StrCpyS(NewName, StrLen(CurName) + Len + 2, CurName);
 
-		if (Name[StrLen(Name) - 1] != '\\')
-			StrCatS(NewName, StrLen(Name) + Len + 2, L"\\");
-		StrCatS(NewName, StrLen(Name) + Len + 2, Selected);
+		if (CurName[StrLen(CurName) - 1] != '\\')
+			StrCatS(NewName, StrLen(CurName) + Len + 2, L"\\");
+		StrCatS(NewName, StrLen(CurName) + Len + 2, Selected);
 		/* Remove trailing / */
 		NewName[StrLen(NewName) - 1] = '\0';
 
 		FreePool(Info);
-		FreePool(Name);
-		Name = NewName;
+		FreePool(CurName);
+		CurName = NewName;
 
 		goto redo;
 	}
-	*Result = AllocateZeroPool((StrLen(Name) + Len + 2) * sizeof(CHAR16));
+	*Result = AllocateZeroPool((StrLen(CurName) + Len + 2) * sizeof(CHAR16));
 	if (*Result == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
 		goto out_free;
 	}
-	StrCpyS(*Result, StrLen(Name) + Len + 2, Name);
-	if (Name[StrLen(Name) - 1] != '\\')
-		StrCatS(*Result, StrLen(Name) + Len + 2, L"\\");
-	StrCatS(*Result, StrLen(Name) + Len + 2, Selected);
+	StrCpyS(*Result, StrLen(CurName) + Len + 2, CurName);
+	if (CurName[StrLen(CurName) - 1] != '\\')
+		StrCatS(*Result, StrLen(CurName) + Len + 2, L"\\");
+	StrCatS(*Result, StrLen(CurName) + Len + 2, Selected);
 	Status = EFI_SUCCESS;
 
 out_free:
 	FreePool(Info);
 	FreePool(Entries);
 out_free_name:
-	FreePool(Name);
+	FreePool(CurName);
 out:
 	return Status;
 }
 
-EFI_STATUS ShellWriteAll(CONST CHAR16* Path, CONST VOID* Buffer, CONST UINTN Size)
+STATIC CONST CHAR16* GetDeviceHandleFromPath(
+	IN CONST CHAR16 *Path,
+	OUT EFI_HANDLE *DeviceHandle
+)
 {
 	EFI_STATUS Status;
-	UINTN _Size = Size;
-	SHELL_FILE_HANDLE FileHandle = { 0 };
+	EFI_DEVICE_PATH_PROTOCOL *DevicePath;
+	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+	EFI_SHELL_PROTOCOL *ShellProtocol;
+	UINTN ColumnPos;
+	CHAR16 DriveName[64];
 
-	ShellDeleteFileByName(Path);
+	/* Default to using the same device as our current executable */
+	Status = gBS->HandleProtocol(gBaseImageHandle, &gEfiLoadedImageProtocolGuid, (VOID**)&LoadedImage);
+	*DeviceHandle = EFI_ERROR(Status) ? NULL : LoadedImage->DeviceHandle;
 
-	Status = ShellOpenFileByName(Path, &FileHandle, 
-		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not open '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	Status = ShellWriteFile(FileHandle, &_Size, (VOID*)Buffer);
+	/* Find the position of the column from the drive alias in the path, if any */
+	for (ColumnPos = 0; ColumnPos < StrLen(Path) && Path[ColumnPos] != L':'; ColumnPos++);
+
+	/* If no drive was specified we're done */
+	if (ColumnPos >= StrLen(Path))
+		return Path;
+
+	/* Extract the drive alias */
+	StrCpyS(DriveName, ARRAY_SIZE(DriveName), Path);
+	DriveName[MIN(ColumnPos + 1, ARRAY_SIZE(DriveName) - 1)] = L'\0';
+
+	/* Convert the drive alias to a device handle using Shell's GetDevicePathFromMap */
+	Status = gBS->LocateProtocol(&gEfiShellProtocolGuid, NULL, (VOID**)&ShellProtocol);
 	if (EFI_ERROR(Status))
-		Print(L"Could not write '%s': %r\n", Path, Status);
+		return Path;
+	DevicePath = (EFI_DEVICE_PATH_PROTOCOL*)ShellProtocol->GetDevicePathFromMap(DriveName);
+	if (DevicePath == NULL)
+		return Path;
+	gBS->LocateDevicePath(&gEfiDevicePathProtocolGuid, &DevicePath, DeviceHandle);
+
+	return &Path[ColumnPos + 1];
+}
+
+EFI_STATUS SimpleFileReadAllByPath(
+	IN CONST CHAR16* Path,
+	OUT UINTN *Size,
+	OUT VOID **Buffer
+)
+{
+	EFI_STATUS Status;
+	EFI_HANDLE DeviceHandle;
+	EFI_FILE_HANDLE File = NULL;
+	CONST CHAR16 *PathStart;
+
+	PathStart = GetDeviceHandleFromPath(Path, &DeviceHandle);
+	Status = SimpleFileOpen(DeviceHandle == NULL ? gBaseImageHandle: DeviceHandle,
+		PathStart, &File, EFI_FILE_MODE_READ);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Could not open '%s'", Path);
+	Status = SimpleFileReadAll(File, Size, Buffer);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Could not read '%s'", Path);
+
 exit:
-	ShellCloseFile(&FileHandle);
+	SimpleFileClose(File);
 	return Status;
 }
 
-EFI_STATUS ShellReadAll(CONST CHAR16* Path, VOID** Buffer, UINTN* Size)
+EFI_STATUS SimpleFileWriteAllByPath(
+	IN CONST CHAR16* Path,
+	IN CONST UINTN Size,
+	IN CONST VOID *Buffer
+)
 {
 	EFI_STATUS Status;
-	SHELL_FILE_HANDLE FileHandle = { 0 };
-	UINT64 _Size;
-	VOID* _Buffer;
+	EFI_HANDLE DeviceHandle;
+	EFI_FILE_HANDLE File = NULL;
+	CONST CHAR16 *PathStart;
 
-	*Buffer = NULL;
-	*Size = 0;
-	Status = ShellOpenFileByName(Path, &FileHandle, EFI_FILE_MODE_READ, 0);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not open '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	Status = ShellGetFileSize(FileHandle, &_Size);
-	if (EFI_ERROR(Status)) {
-		Print(L"Could not read '%s': %r\n", Path, Status);
-		goto exit;
-	}
-	if (_Size > MAX_FILE_SIZE) {
-		Print(L"Size of '%s' is too large\n", Path);
-		Status = EFI_UNSUPPORTED;
-		goto exit;
-	}
-	_Buffer = AllocateZeroPool(_Size);
-	if (_Buffer == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		goto exit;
-	}
-	*Size = (UINTN)_Size;
-	Status = ShellReadFile(FileHandle, Size, _Buffer);
+	PathStart = GetDeviceHandleFromPath(Path, &DeviceHandle);
+	Status = SimpleFileOpen(DeviceHandle == NULL ? gBaseImageHandle: DeviceHandle,
+		PathStart, &File, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE);
 	if (EFI_ERROR(Status))
-		Print(L"Could not read '%s': %r\n", Path, Status);
+		ReportErrorAndExit(L"Could not create '%s'", Path);
+	Status = SimpleFileWriteAll(File, Size, Buffer);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Could not write '%s'", Path);
 exit:
-	ShellCloseFile(&FileHandle);
-	if (EFI_ERROR(Status))
-		FreePool(_Buffer);
-	else
-		*Buffer = _Buffer;
+	SimpleFileClose(File);
 	return Status;
 }
