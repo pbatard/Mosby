@@ -1,5 +1,5 @@
 /*
- * Secure Boot Kick - Secure Boot Key Installation/Creation
+ * MSSB (More Secure Secure Boot -- "Mosby")
  * Copyright © 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "kick.h"
+#include "mosby.h"
 #include "console.h"
 #include "file.h"
 #include "pki.h"
 
+/* Globals */
 EFI_HANDLE gBaseImageHandle = NULL;
 BOOLEAN gOptionSilent = FALSE;
 
@@ -70,7 +71,7 @@ EFI_STATUS ParseList(
 				i += AsciiStrLen(TypeString);
 				while (IsWhiteSpace(Installable->ListData[i]) && i < Installable->ListDataSize)
 					i++;
-				if (Installable->List[Index].NumEntries < MAX_NUM_ENTRIES)
+				if (Installable->List[Index].NumEntries < MOSBY_MAX_ENTRIES)
 					Installable->List[Index].Path[Installable->List[Index].NumEntries++] = &Installable->ListData[i];
 				break;
 			}
@@ -113,7 +114,7 @@ EFI_STATUS EFIAPI efi_main(
 		ReportErrorAndExit(L"This platform does not meet the minimum security requirements.");
 
 	/* 3. Parse and validate the list file */
-	Status = ParseList(LISTFILE_NAME, &Installable);
+	Status = ParseList(MOSBY_LIST_NAME, &Installable);
 	if (EFI_ERROR(Status))
 		goto exit;
 	if (Installable.List[PK].NumEntries > 1) {
@@ -220,7 +221,7 @@ EFI_STATUS EFIAPI efi_main(
 
 	/* 6. Generate a keyless PK cert if none was specified */
 	if (Installable.List[PK].Blob[0] == NULL) {
-		Installable.List[PK].Blob[0] = GenerateCredentials("Kick PK", NULL);
+		Installable.List[PK].Blob[0] = GenerateCredentials("Mosby Generated PK", NULL);
 		if (Installable.List[PK].Blob[0] == NULL)
 			goto exit;
 	}
@@ -233,7 +234,7 @@ EFI_STATUS EFIAPI efi_main(
 		Installable.List[DB].Blob[Entry] = GenerateCredentials("Secure Boot signing", &Key);
 		if (Installable.List[DB].Blob[Entry] == NULL)
 			goto exit;
-		Status = SaveCredentials(Installable.List[DB].Blob[Entry], Key, L"DB");
+		Status = SaveCredentials(Installable.List[DB].Blob[Entry], Key, MOSBY_CRED_NAME);
 		if (EFI_ERROR(Status))
 			goto exit;
 	}

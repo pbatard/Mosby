@@ -1,5 +1,5 @@
 /*
- * uefi-md5sum: UEFI MD5Sum validator - UTF-8 conversion functions
+ * UTF-8 conversion functions
  * Copyright © 2023 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify

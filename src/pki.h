@@ -1,4 +1,5 @@
 /*
+ * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
  * Copyright 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#pragma once
 
 #include <Base.h>
 #include <Uefi.h>

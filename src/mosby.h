@@ -1,5 +1,5 @@
 /*
- * Secure Boot Kick - Secure Boot Key Installation/Creation
+ * MSSB (More Secure Secure Boot -- "Mosby")
  * Copyright © 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#pragma once
 
 #include <Base.h>
 #include <Uefi.h>
@@ -34,12 +36,13 @@
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
+#include "../config.h"
+
+/* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
+
+/* Whether prompts should be silenced */
 extern BOOLEAN gOptionSilent;
-
-#define LISTFILE_NAME L"KickList.txt"
-
-#define NUM_YEARS_VALID 30
 
 /* Types of blobs this application is able to install */
 #define FOREACH_BLOB(BLOB) \
@@ -51,7 +54,7 @@ extern BOOLEAN gOptionSilent;
 	BLOB(MOK) \
 	BLOB(MAX_TYPES)
 
-/* Ensure enum and corresponding strings are in sync */
+/* The following ensures that the enum and corresponding strings stay in sync */
 #define GENERATE_ENUM(ENUM)     ENUM,
 #define GENERATE_STRING(STRING) #STRING,
 
@@ -66,16 +69,14 @@ STATIC inline CONST CHAR8 *BlobName(enum BLOB_TYPE Blob)
 	return Name[Blob];
 }
 
-/* Maximum number of entries we can install for each blob type */
-#define MAX_NUM_ENTRIES 16
-
-/* */
+/* Structure containing the list of blobs for a specific type */
 typedef struct {
 	UINTN NumEntries;
-	CHAR8 *Path[MAX_NUM_ENTRIES];
-	VOID *Blob[MAX_NUM_ENTRIES];
+	CHAR8 *Path[MOSBY_MAX_ENTRIES];
+	VOID *Blob[MOSBY_MAX_ENTRIES];
 } INSTALLABLE_LIST;
 
+/* Structure containing the collection of all blob lists */
 typedef struct {
 	CHAR8 *ListData;
 	UINTN ListDataSize;

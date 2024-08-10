@@ -1,5 +1,5 @@
 ## @file
-#  Component description file for Secure Boot Kick.
+#  MSSB Component description file
 #
 #  This UEFI applucation sets up the certificates and keys for
 #  Secure Boot ownership for the user.
@@ -12,21 +12,21 @@
 
 [Defines]
   INF_VERSION                = 0x00010005
-  BASE_NAME                  = Kick
+  BASE_NAME                  = Mosby
   FILE_GUID                  = C2803D90-B52D-4A2F-BEAD-23B9169002AB
   MODULE_TYPE                = UEFI_APPLICATION
   VERSION_STRING             = 1.0
   ENTRY_POINT                = efi_main
 
 [Sources]
-  console.c
-  file.c
-  kick.c
-  pki.c
-  utf8.c
+  src/console.c
+  src/file.c
+  src/mosby.c
+  src/pki.c
+  src/utf8.c
 
 [Packages]
-  KickPkg.dec
+  MosbyPkg.dec
   MdePkg/MdePkg.dec
   CryptoPkg/CryptoPkg.dec
 

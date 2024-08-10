@@ -1,5 +1,5 @@
 /*
- * Secure Boot Kick - Secure Boot Key Installation/Creation
+ * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
  * Copyright © 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "kick.h"
+#include "mosby.h"
 #include "console.h"
 #include "file.h"
 #include "pki.h"
@@ -50,7 +50,8 @@ STATIC int OpenSSLErrorCallback(
 
 EFI_STATUS InitializePki(VOID)
 {
-	CONST CHAR8 DefaultSeed[] = "SB Kick crypto default seed";
+	// TODO: Derive from clock or something?
+	CONST CHAR8 DefaultSeed[] = "Mosby crypto default seed";
 
 	RAND_seed(DefaultSeed, sizeof(DefaultSeed));
 	return (RAND_status() != 1) ? EFI_UNSUPPORTED : EFI_SUCCESS;
@@ -218,7 +219,7 @@ VOID* GenerateCredentials(
 	AddExtension(Cert, NID_basic_constraints, "critical,CA:TRUE");
 	AddExtension(Cert, NID_key_usage, "critical,digitalSignature,keyEncipherment");
 
-	/* Set certificate validity to NUM_YEARS_VALID */
+	/* Set certificate validity to MOSBY_VALID_YEARS */
 	ASN1_TIME* asn1time = ASN1_TIME_new();
 	ASN1_TIME_set(asn1time, time(NULL));
 	X509_set1_notBefore(Cert, asn1time);
@@ -227,21 +228,21 @@ VOID* GenerateCredentials(
 	/* the start date, we need to compute how many leap days there are in-between   */
 	struct tm tm = { 0 };
 	ASN1_TIME_to_tm(asn1time, &tm);
-	for (i = 0; i < NUM_YEARS_VALID; i++) {
+	for (i = 0; i < MOSBY_VALID_YEARS; i++) {
 		EfiTime.Year = (UINT16)(1900 + tm.tm_year + i);
 		if (IsLeapYear(&EfiTime)) {
-			if (i != 0 && i != NUM_YEARS_VALID - 1)
+			if (i != 0 && i != MOSBY_VALID_YEARS - 1)
 				/* For year that are neither start or end year */
 				NumLeapDays++;
 			else if (i == 0 && tm.tm_mon < 2)
 				/* Start year is leap year and start date is before March 1st */
 				NumLeapDays++;
-			else if (i == NUM_YEARS_VALID - 1 && tm.tm_mon > 1)
+			else if (i == MOSBY_VALID_YEARS - 1 && tm.tm_mon > 1)
 				/* End year is leap year and end date is after February 29th */
 				NumLeapDays++;
 		}
 	}
-	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * (365 * NUM_YEARS_VALID + NumLeapDays) - 1));
+	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * (365 * MOSBY_VALID_YEARS + NumLeapDays) - 1));
 	X509_set1_notAfter(Cert, asn1time);
 	ASN1_TIME_free(asn1time);
 

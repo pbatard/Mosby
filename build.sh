@@ -1,11 +1,15 @@
 #!/bin/env bash
-# !!!THIS SCRIPT IS FOR INTERNAL DEVELOPER USE ONLY!!!
+
+if [ $(hostname) != "nas" ]; then
+  echo THIS SCRIPT IS FOR INTERNAL DEVELOPER USE ONLY\!
+  return 1
+fi
 
 export WORKSPACE=$PWD
 export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
 source edk2/edksetup.sh
-build -a X64 -b RELEASE -t GCC5 -p KickPkg.dsc
-cp Build/RELEASE_GCC5/X64/Kick.efi image
+build -a X64 -b RELEASE -t GCC5 -p MosbyPkg.dsc
+cp Build/RELEASE_GCC5/X64/Mosby.efi image
 # QEMU execution is much faster when '-enable-kvm -cpu host' can be used. However this requires root 
 if [ "$EUID" -eq 0 ]; then
   CPU_OPT="-enable-kvm -cpu host"

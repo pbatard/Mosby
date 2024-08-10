@@ -69,8 +69,8 @@ jobs:
         export WORKSPACE=$PWD
         export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
         source edk2/edksetup.sh
-        build -a ${{ matrix.TARGET_ARCH }} -b ${{ env.BUILD_TYPE }} -t ${{ env.COMPILER }} -p KickPkg.dsc
-        mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/Kick.efi kick_${{ matrix.TARGET_TYPE }}.efi
+        build -a ${{ matrix.TARGET_ARCH }} -b ${{ env.BUILD_TYPE }} -t ${{ env.COMPILER }} -p MosbyPkg.dsc
+        mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/Mosby.efi Mosby_${{ matrix.TARGET_TYPE }}.efi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

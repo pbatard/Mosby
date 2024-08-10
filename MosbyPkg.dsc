@@ -1,5 +1,5 @@
 ## @file
-#  Secure Boot Kick Application
+#  MSSB Application
 #
 #  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
 #
@@ -8,7 +8,7 @@
 ##
 
 [Defines]
-  PLATFORM_NAME                  = KickPkg
+  PLATFORM_NAME                  = MosbyPkg
   PLATFORM_GUID                  = 8F782584-E305-4360-B11B-A92C6380D1D6
   PLATFORM_VERSION               = 1.0
   DSC_SPECIFICATION              = 0x00010005
@@ -21,7 +21,7 @@
 [BuildOptions]
   DEBUG_*_*_CC_FLAGS             = -DENABLE_DEBUG
   RELEASE_*_*_CC_FLAGS           = -DMDEPKG_NDEBUG
-  *_*_*_CC_FLAGS                 = -Wno-error=incompatible-pointer-types -Wno-error=unused-function -Wno-error=unused-variable -flto=auto -DDISABLE_NEW_DEPRECATED_INTERFACES
+  *_*_*_CC_FLAGS                 = -flto=auto -DDISABLE_NEW_DEPRECATED_INTERFACES
 
 !include MdePkg/MdeLibs.dsc.inc
 
@@ -76,4 +76,4 @@
 ###################################################################################################
 
 [Components]
-  KickPkg.inf
+  MosbyPkg.inf
