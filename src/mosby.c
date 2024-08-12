@@ -90,6 +90,61 @@ exit:
 	return Status;
 }
 
+/* Convert an UTF8 path to UCS2 while replacing any %ARCH% token */
+STATIC EFI_STATUS ConvertPath(
+	IN CHAR8 *Src,
+	IN OUT CHAR16 *Dst,
+	IN UINTN DstLen
+)
+{
+	EFI_STATUS Status;
+	CONST CHAR8 *Token = "%ARCH%";
+	/* Use the same arch names as with the official UEFI revocation lists */
+#if defined(_M_X64) || defined(__x86_64__)
+	CONST CHAR16 *Rep = L"x64";
+#elif defined(_M_IX86) || defined(__i386__)
+	CONST CHAR16 *Rep = L"x86";
+#elif defined (_M_ARM64) || defined(__aarch64__)
+	CONST CHAR16 *Rep = L"arm64";
+#elif defined (_M_ARM) || defined(__arm__)
+	CONST CHAR16 *Rep = L"arm";
+#elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
+	CONST CHAR16 *Rep = L"riscv64";
+#else
+#	error Unsupported architecture
+#endif
+	CHAR16 Frag[MAX_PATH];
+	CHAR8 *Ptr;
+
+	*Dst = 0;
+	while ((Ptr = AsciiStrStr(Src, Token)) != NULL) {
+		*Ptr = 0;
+		if (*Src != '\0') {
+			Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Could not convert '%a'", Src);
+			Status = StrCatS(Dst, DstLen, Frag);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Could not convert '%a'", Src);
+		}
+		Status = StrCatS(Dst, DstLen, Rep);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Could not convert '%a'", Src);
+		Src = &Ptr[AsciiStrLen(Token)];
+	}
+	if (*Src != '\0') {
+		Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Could not convert '%a'", Src);
+		Status = StrCatS(Dst, DstLen, Frag);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Could not convert '%a'", Src);
+	}
+
+exit:
+	return Status;
+}
+
 /*
  * Application entry-point
  */
@@ -187,9 +242,9 @@ EFI_STATUS EFIAPI efi_main(
 				break;
 			}
 
-			Status = Utf8ToUcs2(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
+			Status = ConvertPath(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
 			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Could not convert '%a'", Installable.List[Type].Path[Entry]);
+				goto exit;
 
 			if (StrCmp(Path, L"[SELECT]") == 0) {
 				CHAR16 *Blah, Title[80];
