@@ -56,6 +56,8 @@
   UefiRuntimeServicesTableLib|MdePkg/Library/UefiRuntimeServicesTableLib/UefiRuntimeServicesTableLib.inf
   OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
+  PlatformPKProtectionLib|SecurityPkg/Library/PlatformPKProtectionLibVarPolicy/PlatformPKProtectionLibVarPolicy.inf
+  SecureBootVariableLib|SecurityPkg/Library/SecureBootVariableLib/SecureBootVariableLib.inf
 
 [LibraryClasses.IA32, LibraryClasses.X64, LibraryClasses.AARCH64]
   RngLib|MdePkg/Library/BaseRngLib/BaseRngLib.inf

@@ -34,8 +34,19 @@
 #include <openssl/pkcs12.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+
+STATIC struct {
+	EFI_GUID Sha256;
+	EFI_GUID Sha384;
+	EFI_GUID Sha512;
+} X509EslGuid = {
+	EFI_CERT_X509_SHA256_GUID,
+	EFI_CERT_X509_SHA384_GUID,
+	EFI_CERT_X509_SHA512_GUID
+};
 
 /* For OpenSSL error reporting */
 STATIC int OpenSSLErrorCallback(
@@ -132,7 +143,6 @@ UINT32 GetDbxLength(
 	return Esl->SignatureListSize;
 }
 
-
 VOID* ReadDbx(
 	IN CONST CHAR16 *Path
 )
@@ -192,12 +202,14 @@ VOID* GenerateCredentials(
 	INTN NumLeapDays = 0, i;
 	EVP_PKEY *Key = NULL;
 	X509 *Cert = NULL;
-	
+	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 };
+	time_t Epoch;
+	unsigned int Len;
+
 	/* Create a new RSA-2048 keypair */
 	Key = EVP_RSA_gen(2048);
 	if (Key == NULL)
 		ReportOpenSSLErrorAndExit(L"EVP_RSA_gen()", EFI_PROTOCOL_ERROR);
-	Print(L"Generated RSA keypair...\n");
 
 	/* Create a new X509 certificate */
 	Cert = X509_new();
@@ -206,8 +218,8 @@ VOID* GenerateCredentials(
 
 	/* Set the certificate serial number */
 	ASN1_INTEGER* sn = ASN1_INTEGER_new();
-	// TODO: Derive a serial number from current date
-	ASN1_INTEGER_set(sn, 0x12345678);
+	Epoch = time(NULL);
+	ASN1_INTEGER_set(sn, Epoch);
 	if (!X509_set_serialNumber(Cert, sn))
 		OSSL_REPORT_ERROR(L"X509_set_serialNumber()");
 	ASN1_INTEGER_free(sn);
@@ -219,9 +231,18 @@ VOID* GenerateCredentials(
 	AddExtension(Cert, NID_basic_constraints, "critical,CA:TRUE");
 	AddExtension(Cert, NID_key_usage, "critical,digitalSignature,keyEncipherment");
 
+	/* Set subject key identifier */
+	ASN1_OCTET_STRING *Skid = ASN1_OCTET_STRING_new();
+	if (Skid == NULL)
+		ReportOpenSSLErrorAndExit(L"ASN1_OCTET_STRING_new()", EFI_PROTOCOL_ERROR);
+	X509_pubkey_digest(Cert, EVP_sha1(), Hash, &Len);
+	ASN1_OCTET_STRING_set(Skid, Hash, SHA_DIGEST_LENGTH);
+	X509_add1_ext_i2d(Cert, NID_subject_key_identifier, Skid, 0, X509V3_ADD_DEFAULT);
+	ASN1_OCTET_STRING_free(Skid);
+
 	/* Set certificate validity to MOSBY_VALID_YEARS */
 	ASN1_TIME* asn1time = ASN1_TIME_new();
-	ASN1_TIME_set(asn1time, time(NULL));
+	ASN1_TIME_set(asn1time, Epoch);
 	X509_set1_notBefore(Cert, asn1time);
 
 	/* Because we want the certificate expiration to end on the same month & day as */
@@ -258,7 +279,6 @@ VOID* GenerateCredentials(
 	/* Might as well verify the signature while we're at it */
 	if (!X509_verify(Cert, Key))
 		ReportOpenSSLError(L"X509_verify()");
-	Print(L"Generated X509 certificate...\n");
 	Status = EFI_SUCCESS;
 
 exit:
@@ -287,19 +307,17 @@ EFI_STATUS SaveCredentials(
 	CHAR16 Path[MAX_PATH];
 	PKCS12* p12 = NULL;
 	BIO *bio = NULL;
-	UINT8 keyid[EVP_MAX_MD_SIZE];
+	UINT8 KeyId[EVP_MAX_MD_SIZE];
 	INTN Size;
-	unsigned int keyidlen = 0;
-
+	unsigned int KeyIdLen = 0;
 
 	/* Generate PKCS#12 data */
-	if (!X509_digest((X509*)Cert, EVP_sha256(), keyid, &keyidlen))
+	if (!X509_digest((X509*)Cert, EVP_sha256(), KeyId, &KeyIdLen))
 		ReportOpenSSLErrorAndExit(L"X509_digest()", EFI_PROTOCOL_ERROR);
-	X509_keyid_set1((X509*)Cert, keyid, keyidlen);
+	X509_keyid_set1((X509*)Cert, KeyId, KeyIdLen);
 	p12 = PKCS12_create(NULL, NULL, (EVP_PKEY*)Key, (X509*)Cert, NULL, NID_undef, NID_undef, 0, 0, 0);
 	if (p12 == NULL)
 		ReportOpenSSLErrorAndExit(L"PKCS12_create()", EFI_PROTOCOL_ERROR);
-	Print(L"Generated PKCS#12 data...\n");
 
 	/* Save .pfx */
 	Ptr = Buffer;	/* i2d_###() modifies the pointer */
@@ -351,10 +369,90 @@ EFI_STATUS SaveCredentials(
 	Status = SimpleFileWriteAllByPath(Path, (UINTN)Size, Buffer);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"Could not write '%s'", Path);
-	Print(L"Generated all certificate and key files...\n");
 	Status = EFI_SUCCESS;
 
 exit:
 	BIO_free(bio);
 	return Status;
+}
+
+EFI_SIGNATURE_LIST* GenerateEsl(
+	IN CONST VOID *Blob,
+	IN CONST UINTN Type
+)
+{
+	EFI_SIGNATURE_LIST *Esl = NULL;
+	EFI_SIGNATURE_DATA *Data = NULL;
+	INTN Size;
+	UINT8 *Ptr;
+	X509 *Cert;
+	EFI_GUID OwnerGuid, *TypeGuid = NULL;
+	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
+
+	if (Blob == NULL)
+		return NULL;
+
+	/* For DBX, just duplicate the content */
+	if (Type == DBX) {
+		Size = (INTN)((EFI_SIGNATURE_LIST*)Blob)->SignatureListSize;
+		/* Sanity check */
+		if (Size > 1014 * 1024)
+			ReportErrorAndExit(L"Invalid DBX size");
+		Esl = AllocateZeroPool(Size);
+		if (Esl == NULL)
+			ReportErrorAndExit(L"Allocation error");
+		CopyMem(Esl, Blob, Size);
+		return Esl;
+	}
+
+	Cert = (X509*)Blob;
+	Size = (INTN)i2d_X509(Cert, NULL);
+	if (Size <= 0)
+		return NULL;
+	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size);
+	if (Esl == NULL)
+		ReportErrorAndExit(L"Allocation error");
+
+	switch (X509_get_signature_nid(Cert)) {
+		case NID_sha256:
+		case NID_sha256WithRSAEncryption:
+			TypeGuid = &X509EslGuid.Sha256;
+			break;
+		case NID_sha384:
+		case NID_sha384WithRSAEncryption:
+			TypeGuid = &X509EslGuid.Sha384;
+			break;
+		case NID_sha512:
+		case NID_sha512WithRSAEncryption:
+			TypeGuid = &X509EslGuid.Sha512;
+			break;
+		default:
+			break;
+	}
+
+	if (TypeGuid == NULL) {
+		FreePool(Esl);
+		ReportErrorAndExit(L"Unsupported signature algorithm");
+	}
+	CopyGuid(&Esl->SignatureType, TypeGuid);
+
+	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size;
+	Esl->SignatureSize = sizeof(EFI_SIGNATURE_DATA) - 1 + Size;
+
+	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
+	Ptr = &Data->SignatureData[0];
+	i2d_X509(Cert, &Ptr);
+
+	/* Derive the SignatureOwner GUID from the SHA-1 Thumbprint */
+	SHA1(&Data->SignatureData[0], Size, Sha1);
+
+	/* Reorder, to have the GUID read in the same order as the byte data */
+	OwnerGuid.Data1 = SwapBytes32(((UINT32*)Sha1)[0]);
+	OwnerGuid.Data2 = SwapBytes16(((UINT16*)Sha1)[2]);
+	OwnerGuid.Data3 = SwapBytes16(((UINT16*)Sha1)[3]);
+	CopyMem(&OwnerGuid.Data4, &Sha1[8], 8);
+	CopyGuid(&Data->SignatureOwner, &OwnerGuid);
+
+exit:
+	return Esl;
 }

@@ -20,4 +20,5 @@
   CryptoPkg/Library/OpensslLib/OpensslGen/include
   CryptoPkg/Library/OpensslLib/OpensslGen/providers/common/include
   EmbeddedPkg/Include
+  SecurityPkg/Include
   ShellPkg/Include

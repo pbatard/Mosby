@@ -23,13 +23,15 @@
 
 #include <Uefi/UefiBaseType.h>
 #include <Guid/ImageAuthentication.h>
+#include <UefiSecureBoot.h>
 #include <Library/BaseLib.h>
 #include <Library/BaseCryptLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/DevicePathLib.h>
-#include <Library/TimeBaseLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PrintLib.h>
+#include <Library/SecureBootVariableLib.h>
+#include <Library/TimeBaseLib.h>
 #include <Library/UefiApplicationEntryPoint.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
@@ -45,29 +47,15 @@ extern EFI_HANDLE gBaseImageHandle;
 extern BOOLEAN gOptionSilent;
 
 /* Types of blobs this application is able to install */
-#define FOREACH_BLOB(BLOB) \
-	BLOB(PK)  \
-	BLOB(KEK) \
-	BLOB(DB) \
-	BLOB(DBX) \
-	BLOB(DBT) \
-	BLOB(MOK) \
-	BLOB(MAX_TYPES)
-
-/* The following ensures that the enum and corresponding strings stay in sync */
-#define GENERATE_ENUM(ENUM)     ENUM,
-#define GENERATE_STRING(STRING) #STRING,
-
-enum BLOB_TYPE {
-	FOREACH_BLOB(GENERATE_ENUM)
+enum {
+	PK,
+	KEK,
+	DB,
+	DBX,
+	DBT,
+	MOK,
+	MAX_TYPES
 };
-
-STATIC inline CONST CHAR8 *BlobName(enum BLOB_TYPE Blob)
-{
-	STATIC CONST CHAR8 *Name[] = { FOREACH_BLOB(GENERATE_STRING) };
-
-	return Name[Blob];
-}
 
 /* Structure containing the list of blobs for a specific type */
 typedef struct {
@@ -86,12 +74,7 @@ typedef struct {
 /* FreePool() replacement, that NULLs the freed pointer. */
 #define SafeFree(p)  do { FreePool(p); p = NULL; } while(0)
 
-/* Check for a valid whitespace character */
-STATIC __inline BOOLEAN IsWhiteSpace(CHAR8 c)
-{
-	return (c == ' ' || c == '\t');
-}
-
+/* Various error reporting macros */
 #define ReportErrorAndExit(...) do { CHAR16 _ErrMsg[128];           \
 	UnicodeSPrint(_ErrMsg, ARRAY_SIZE(_ErrMsg), __VA_ARGS__);       \
 	ConsoleErrorBox(_ErrMsg); goto exit; } while(0)
@@ -104,20 +87,3 @@ STATIC __inline BOOLEAN IsWhiteSpace(CHAR8 c)
 #define ReportOpenSSLErrorAndExit(msg, err) do {                    \
 	ERR_print_errors_cb(OpenSSLErrorCallback, msg), Status = err;   \
 	goto exit; } while(0)
-
-/**
-  Convert a UTF-8 encoded string to a UCS-2 encoded string.
-
-  @param[in]  Utf8String      A pointer to the input UTF-8 encoded string.
-  @param[out] Ucs2String      A pointer to the output UCS-2 encoded string.
-  @param[in]  Ucs2StringSize  The size of the Ucs2String buffer (in CHAR16).
-
-  @retval EFI_SUCCESS            The conversion was successful.
-  @retval EFI_INVALID_PARAMETER  One or more of the input parameters are invalid.
-  @retval EFI_BUFFER_TOO_SMALL   The output buffer is too small to hold the result.
-**/
-EFI_STATUS Utf8ToUcs2(
-	IN CONST CHAR8* Utf8String,
-	OUT CHAR16* Ucs2String,
-	IN CONST UINTN Ucs2StringSize
-);

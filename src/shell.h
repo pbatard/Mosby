@@ -1,5 +1,5 @@
 /*
- * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
+ * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
  * Copyright 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,38 +20,9 @@
 
 #include <Base.h>
 #include <Uefi.h>
-#include <Guid/ImageAuthentication.h>
 
-EFI_STATUS InitializePki(VOID);
-
-VOID* ReadCertificate(
-	IN CONST CHAR16 *Path
-);
-
-VOID* ReadDbx(
-	IN CONST CHAR16 *Path
-);
-
-VOID* GenerateCredentials(
-	IN CONST CHAR8 *CertName,
-	OUT VOID **GeneratedKey
-);
-
-UINT32 GetCertificateLength(
-	IN CONST VOID *Cert
-);
-
-UINT32 GetDbxLength(
-	IN CONST VOID *Dbx
-);
-
-EFI_STATUS SaveCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key,
-	IN CONST CHAR16 *BaseName
-);
-
-EFI_SIGNATURE_LIST* GenerateEsl(
-	IN CONST VOID *Blob,
-	IN CONST UINTN Type
+EFI_STATUS ArgSplit(
+	IN CONST EFI_HANDLE Image,
+	OUT INTN *Argc,
+	OUT CHAR16*** Argv
 );

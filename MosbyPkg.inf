@@ -23,6 +23,7 @@
   src/file.c
   src/mosby.c
   src/pki.c
+  src/shell.c
   src/utf8.c
 
 [Packages]
@@ -47,6 +48,8 @@
   UefiHiiServicesLib
   UefiLib
   UefiRuntimeServicesTableLib
+  PlatformPKProtectionLib
+  SecureBootVariableLib
 
 [Guids]
   gEfiFileInfoGuid
