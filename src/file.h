@@ -22,12 +22,11 @@
 #include <Uefi.h>
 #include <Guid/FileInfo.h>
 #include <Library/UefiLib.h>
-#include <Uefi/UefiBaseType.h>
 
-/* None of the files we deal with should be larger than 1 MB */
+// None of the files we deal with should be larger than 1 MB.
 #define MAX_FILE_SIZE (1024 * 1024)
 
-/* None of the paths we deal with should be longer than 512 codepoints */
+// None of the paths we deal with should be longer than 512 codepoints.
 #define MAX_PATH 512
 
 EFI_STATUS SimpleFileOpenByHandle(
@@ -98,12 +97,14 @@ EFI_STATUS SimpleFileSelector(
 );
 
 EFI_STATUS SimpleFileReadAllByPath(
+	IN CONST EFI_HANDLE Image,
 	IN CONST CHAR16* Path,
 	OUT UINTN *Size,
 	OUT VOID **Buffer
 );
 
 EFI_STATUS SimpleFileWriteAllByPath(
+	IN CONST EFI_HANDLE Image,
 	IN CONST CHAR16* Path,
 	IN CONST UINTN Size,
 	IN CONST VOID *Buffer

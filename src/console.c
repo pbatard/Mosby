@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #include <Base.h>
 #include <Uefi.h>
 
@@ -164,11 +165,11 @@ EFI_STATUS ConsolePrintBoxAt(
 
 			CopyMem(Line + Col + 1, Str, MIN(Len, SizeCols - 2) * 2);
 		}
-		if (LineNum >= 0 && LineNum == Highlight) 
+		if (LineNum >= 0 && LineNum == Highlight)
 			Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLACK);
 		Console->SetCursorPosition(Console, StartCol, i);
 		Console->OutputString(Console, Line);
-		if (LineNum >= 0 && LineNum == Highlight) 
+		if (LineNum >= 0 && LineNum == Highlight)
 			Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
 	}
 

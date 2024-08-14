@@ -43,9 +43,6 @@
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
 
-/* Whether prompts should be silenced */
-extern BOOLEAN gOptionSilent;
-
 /* Types of blobs this application is able to install */
 enum {
 	PK,
@@ -74,16 +71,5 @@ typedef struct {
 /* FreePool() replacement, that NULLs the freed pointer. */
 #define SafeFree(p)  do { FreePool(p); p = NULL; } while(0)
 
-/* Various error reporting macros */
-#define ReportErrorAndExit(...) do { CHAR16 _ErrMsg[128];           \
-	UnicodeSPrint(_ErrMsg, ARRAY_SIZE(_ErrMsg), __VA_ARGS__);       \
-	ConsoleErrorBox(_ErrMsg); goto exit; } while(0)
-
-#define OSSL_REPORT_ERROR(msg) ERR_print_errors_cb(OpenSSLErrorCallback, msg)
-
-#define ReportOpenSSLError(msg) do {                                \
-	ERR_print_errors_cb(OpenSSLErrorCallback, msg); } while(0)
-
-#define ReportOpenSSLErrorAndExit(msg, err) do {                    \
-	ERR_print_errors_cb(OpenSSLErrorCallback, msg), Status = err;   \
-	goto exit; } while(0)
+/* Error reporting macro */
+#define ReportErrorAndExit(...) do { Print(__VA_ARGS__); goto exit; } while(0)

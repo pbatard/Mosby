@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "shell.h"
 
 #include <Library/BaseLib.h>
@@ -52,7 +53,7 @@ EFI_STATUS ArgSplit(
 		}
 	}
 
-	(*Argc)++;	/* We counted spaces, so add one for initial */
+	(*Argc)++;	// We counted spaces, so add one for initial
 
 	*Argv = AllocatePool(*Argc * sizeof(*Argv));
 	if (*Argv == NULL)
@@ -64,7 +65,7 @@ EFI_STATUS ArgSplit(
 		if (*c == L' ') {
 			*c = L'\0';
 			if (*(c + 1) == '\0')
-				/* Strip trailing space */
+				// Strip trailing space
 				break;
 			Start = c + 1;
 			(*Argv)[Count++] = Start;

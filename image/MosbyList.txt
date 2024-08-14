@@ -9,7 +9,6 @@
 # curl --create-dirs -L https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin -o dbx/dbx_x64.bin
 # curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin -o dbx/dbx_arm.bin
 # curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
-[SILENT]
 PK [GENERATE]
 KEK certs\kek_ms1.cer
 KEK certs\kek_ms2.cer
@@ -19,5 +18,5 @@ DB certs\db_ms2.cer
 DB certs\db_ms3.cer
 DB certs\db_ms4.cer
 DB [GENERATE]
-# %ARCH% can be used as a token that is replaced with the runtime arch ('x64', 'ia32', 'arm', 'aa64')
+# %ARCH% will be replaced with the runtime arch ('x64', 'ia32', 'arm', 'aa64')
 DBX dbx\dbx_%ARCH%.bin

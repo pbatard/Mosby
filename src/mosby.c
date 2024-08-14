@@ -25,13 +25,14 @@
 
 /* Globals */
 EFI_HANDLE gBaseImageHandle = NULL;
-BOOLEAN gOptionSilent = FALSE;
+
+STATIC BOOLEAN gOptionSilent = FALSE;
 
 /* MokList GUID - Not yet defined in EDK2 */
-STATIC EFI_GUID gEfiShimLockGuid = 
+STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
 
-/* Attributes for all the blob types we support */
+/* Attributes for the blob types we support */
 STATIC struct {
 	CHAR8 *Name;
 	CHAR16 *VarName;
@@ -79,8 +80,8 @@ EFI_STATUS ParseList(
 
 	SetMem((VOID *)Installable, sizeof(INSTALLABLE_COLLECTION), 0);
 
-	/* NB: SimpleFileReadAllByPath() adds an extra NUL to the data read */
-	Status = SimpleFileReadAllByPath(ListFileName, &Installable->ListDataSize, (VOID**)&Installable->ListData);
+	// NB: SimpleFileReadAllByPath() adds an extra NUL to the data read
+	Status = SimpleFileReadAllByPath(gBaseImageHandle, ListFileName, &Installable->ListDataSize, (VOID**)&Installable->ListData);
 	if (EFI_ERROR(Status))
 		goto exit;
 
@@ -88,19 +89,19 @@ EFI_STATUS ParseList(
 		if (Installable->ListData[i] == '\r' || Installable->ListData[i] == '\n')
 			Installable->ListData[i] = 0;
 	for (i = 0; i < Installable->ListDataSize; ) {
-		/* Ignore whitespaces and control characters */
+		// Ignore whitespaces and control characters
 		while (Installable->ListData[i] <= ' ' && i < Installable->ListDataSize)
 			i++;
 		if (i >= Installable->ListDataSize)
 			break;
 		if (Installable->ListData[i] == '#') {
-			/* Ignore comments */
+			// Ignore comments
 		} else if (Installable->ListData[i] == '[') {
 			if (AsciiStrCmp(&Installable->ListData[i], "[SILENT]") == 0) {
 				gOptionSilent = TRUE;
 			} else {
 				Status = EFI_NO_MAPPING;
-				ReportErrorAndExit(L"Unrecognized option '%a'", &Installable->ListData[i]);
+				ReportErrorAndExit(L"Unrecognized option '%a'\n", &Installable->ListData[i]);
 			};
 		} else {
 			for (Type = 0; Type < MAX_TYPES; Type++) {
@@ -119,7 +120,7 @@ EFI_STATUS ParseList(
 			}
 			if (Type >= MAX_TYPES) {
 				Status = EFI_NO_MAPPING;
-				ReportErrorAndExit(L"Could not parse '%s'", ListFileName);
+				ReportErrorAndExit(L"Failed to parse '%s'\n", ListFileName);
 				break;
 			}
 		}
@@ -141,7 +142,7 @@ STATIC EFI_STATUS ConvertPath(
 {
 	EFI_STATUS Status;
 	CONST CHAR8 *Token = "%ARCH%";
-	/* Use the same arch names as the ones used for UEFI bootloaders */
+	// Use the same arch names as the suffixes used for UEFI bootloaders
 #if defined(_M_X64) || defined(__x86_64__)
 	CONST CHAR16 *Rep = L"x64";
 #elif defined(_M_IX86) || defined(__i386__)
@@ -165,24 +166,24 @@ STATIC EFI_STATUS ConvertPath(
 		if (*Src != '\0') {
 			Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
 			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Could not convert '%a'", Src);
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 			Status = StrCatS(Dst, DstLen, Frag);
 			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Could not convert '%a'", Src);
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 		}
 		Status = StrCatS(Dst, DstLen, Rep);
 		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Could not convert '%a'", Src);
+			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 		Src = &Ptr[AsciiStrLen(Token)];
 		*Ptr = Old;
 	}
 	if (*Src != '\0') {
 		Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
 		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Could not convert '%a'", Src);
+			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 		Status = StrCatS(Dst, DstLen, Frag);
 			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Could not convert '%a'", Src);
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 	}
 
 exit:
@@ -210,23 +211,23 @@ EFI_STATUS SetSecureBootVariable(
 
 	Status = gRT->GetTime(&Time, NULL);
 	if (EFI_ERROR(Status)) {
-		Print(L"Could not get current time: %r\n", Status);
+		Print(L"Failed to get current time: %r\n", Status);
 		return Status;
 	}
 
-	/* SetVariable() *will* fail with "Security Violation" unless you */
-	/* explicitly zero these before calling CreateTimeBasedPayload(). */
+	// SetVariable() *will* fail with "Security Violation" unless you
+	// explicitly zero these before calling CreateTimeBasedPayload()
 	Time.Nanosecond = 0;
 	Time.TimeZone = 0;
 	Time.Daylight = 0;
 
 	VarData = (UINT8*)Esl;
 	VarSize = Esl->SignatureListSize;
-	/* NB: CreateTimeBasedPayload() frees the input buffer before replacing it */
+	// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
 	Status = CreateTimeBasedPayload(&VarSize, &VarData, &Time);
 	if (EFI_ERROR(Status)) {
 		SafeFree(Esl);
-		Print(L"Could not create time-based data payload: %r\n", Status);
+		Print(L"Failed to create time-based data payload: %r\n", Status);
 		return Status;
 	}
 
@@ -234,7 +235,7 @@ EFI_STATUS SetSecureBootVariable(
 			VarAttributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0), VarSize, VarData);
 	SafeFree(VarData);
 	if (EFI_ERROR(Status))
-		Print(L"Could not set Secure Boot variable: %r\n", Status);
+		Print(L"Failed to set Secure Boot variable: %r\n", Status);
 
 	return EFI_SUCCESS;
 }
@@ -261,13 +262,16 @@ EFI_STATUS EFIAPI efi_main(
 	Status = ArgSplit(gBaseImageHandle, &Argc, &Argv);
 	if (Status == EFI_SUCCESS) {
 		while (Argc > 1 && Argv[1][0] == L'-') {
-			/* QEMU test mode */
 			if (StrCmp(Argv[1], L"-t") == 0) {
 				TestMode = TRUE;
 				Argv += 1;
 				Argc -= 1;
+			} else if (StrCmp(Argv[1], L"-s") == 0) {
+				gOptionSilent = TRUE;
+				Argv += 1;
+				Argc -= 1;
 			} else {
-				/* Unsupported argument */
+				// Unsupported argument
 				break;
 			}
 		}
@@ -278,19 +282,19 @@ EFI_STATUS EFIAPI efi_main(
 		Size = sizeof(SecureBoot);
 		Status = gRT->GetVariable(L"SecureBoot", &gEfiGlobalVariableGuid, NULL, &Size, &SecureBoot);
 		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"This platform does not support Secure Boot.");
+			ReportErrorAndExit(L"This platform does not support Secure Boot.\n");
 		Size = sizeof(SetupMode);
 		Status = gRT->GetVariable(L"SetupMode", &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
 		if (EFI_ERROR(Status) || SecureBoot != 0 || SetupMode == 0) {
 			Status = EFI_UNSUPPORTED;
-			ReportErrorAndExit(L"This platform is not in Setup Mode.");
+			ReportErrorAndExit(L"This platform is not in Setup Mode.\n");
 		}
 	}
 
 	/* 2. Initialize the random generator and validate the platform */
 	Status = InitializePki();
 	if (EFI_ERROR(Status))
-		ReportErrorAndExit(L"This platform does not meet the minimum security requirements.");
+		ReportErrorAndExit(L"This platform does not meet the minimum security requirements.\n");
 
 	/* 3. Parse and validate the list file */
 	Status = ParseList(MOSBY_LIST_NAME, &Installable);
@@ -329,7 +333,7 @@ EFI_STATUS EFIAPI efi_main(
 	for (Type = 0; Type < MAX_TYPES; Type++) {
 		for (Entry = 0; Entry < Installable.List[Type].NumEntries && Installable.List[Type].Path[Entry] != NULL; Entry++) {
 
-			/* DB/PK types have a special GENERATE and PROMPT mode */
+			// DB/PK types have a special GENERATE and PROMPT mode
 			if ((Type == DB || Type == PK) && AsciiStrCmp(Installable.List[Type].Path[Entry], "[GENERATE]") == 0)
 				continue;
 
