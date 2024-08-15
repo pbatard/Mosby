@@ -222,7 +222,7 @@ EFI_STATUS SimpleDirReadAll(
 
 	Status = SimpleFileOpen(Image, Name, &File, EFI_FILE_MODE_READ);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to open file '%s': %r\n", Name, Status);
+		FileReportErrorAndExit(L"Failed to open '%s': %r\n", Name, Status);
 
 	Status = SimpleDirReadAllByHandle(File, Name, Entries, Count);
 exit:
@@ -663,10 +663,10 @@ EFI_STATUS SimpleFileReadAllByPath(
 	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
 		PathStart, &File, EFI_FILE_MODE_READ);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to open '%s'\n", Path);
+		FileReportErrorAndExit(L"Failed to open '%s': %r\n", Path, Status);
 	Status = SimpleFileReadAll(File, Size, Buffer);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to read '%s'\n", Path);
+		FileReportErrorAndExit(L"Failed to read '%s': %r\n", Path, Status);
 
 exit:
 	SimpleFileClose(File);
@@ -689,10 +689,10 @@ EFI_STATUS SimpleFileWriteAllByPath(
 	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
 		PathStart, &File, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to create '%s'\n", Path);
+		FileReportErrorAndExit(L"Failed to create '%s': %r\n", Path, Status);
 	Status = SimpleFileWriteAll(File, Size, Buffer);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to write '%s'", Path);
+		FileReportErrorAndExit(L"Failed to write '%s': %r", Path, Status);
 exit:
 	SimpleFileClose(File);
 	return Status;

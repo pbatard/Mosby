@@ -43,7 +43,7 @@
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
 
-/* Types of blobs this application is able to install */
+/* Types of "keys" this application is able to install */
 enum {
 	PK,
 	KEK,
@@ -54,14 +54,14 @@ enum {
 	MAX_TYPES
 };
 
-/* Structure containing the list of blobs for a specific type */
+/* Structure containing the list of "keys" for a specific type */
 typedef struct {
 	UINTN NumEntries;
 	CHAR8 *Path[MOSBY_MAX_ENTRIES];
-	VOID *Blob[MOSBY_MAX_ENTRIES];
+	EFI_SIGNATURE_LIST *Esl[MOSBY_MAX_ENTRIES];
 } INSTALLABLE_LIST;
 
-/* Structure containing the collection of all blob lists */
+/* Structure containing the collection of all the lists */
 typedef struct {
 	CHAR8 *ListData;
 	UINTN ListDataSize;

@@ -44,16 +44,6 @@
 	ERR_print_errors_cb(OpenSSLErrorCallback, _ErrMsg); goto exit;  \
 	} while(0)
 
-STATIC struct {
-	EFI_GUID Sha256;
-	EFI_GUID Sha384;
-	EFI_GUID Sha512;
-} X509EslGuid = {
-	EFI_CERT_X509_SHA256_GUID,
-	EFI_CERT_X509_SHA384_GUID,
-	EFI_CERT_X509_SHA512_GUID
-};
-
 /* For OpenSSL error reporting */
 STATIC int OpenSSLErrorCallback(
 	CONST CHAR8 *AsciiString,
@@ -94,108 +84,6 @@ STATIC EFI_STATUS AddExtension(
 exit:
 	X509_EXTENSION_free(ex);
 	return Status;
-}
-
-VOID* ReadCertificate(
-	IN CONST CHAR16 *Path
-)
-{
-	EFI_STATUS Status;
-	UINTN Size;
-	UINT8 *Buffer = NULL;
-	X509 *Cert = NULL;
-	BIO *bio = NULL;
-
-	Status = SimpleFileReadAllByPath(gBaseImageHandle, Path, &Size, (VOID**)&Buffer);
-	if (EFI_ERROR(Status))
-		goto exit;
-
-	// Try d2i first in case it's a binary cert
-	Cert = d2i_X509(NULL, (CONST UINT8**)&Buffer, Size);
-	if (Cert != NULL)
-		goto exit;
-
-	// d2i didn't succeed, try to read as PEM
-	bio = BIO_new_mem_buf(Buffer, Size);
-	if (bio == NULL)
-		ReportErrorAndExit(L"Failed to allocate certificate buffer\n");
-	Cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
-	if (Cert == NULL)
-		ReportErrorAndExit(L"'%s' is not a valid certificate\n", Path);
-
-exit:
-	BIO_free(bio);
-	FreePool(Buffer);
-	return Cert;
-}
-
-UINT32 GetCertificateLength(
-	IN CONST VOID *Cert
-)
-{
-	int len;
-
-	len = i2d_X509((X509*)Cert, NULL);
-
-	return len > 0 ? (UINT32)len : 0;
-}
-
-UINT32 GetDbxLength(
-	IN CONST VOID *Dbx
-)
-{
-	EFI_SIGNATURE_LIST* Esl = (EFI_SIGNATURE_LIST*)Dbx;
-
-	return Esl->SignatureListSize;
-}
-
-VOID* ReadDbx(
-	IN CONST CHAR16 *Path
-)
-{
-	EFI_STATUS Status;
-	EFI_FILE_HANDLE File = NULL;
-	UINTN Size, HeaderSize;
-	EFI_SIGNATURE_LIST* Esl = NULL;
-	UINT8 *Buffer = NULL;
-
-	Status = SimpleFileReadAllByPath(gBaseImageHandle, Path, &Size, (VOID**)&Buffer);
-	if (EFI_ERROR(Status))
-		goto exit;
-
-	if (Size < sizeof(EFI_SIGNATURE_LIST))
-		ReportErrorAndExit(L"'%s' is too small to be a DBX\n", Path);
-
-	// Check for unsigned ESL
-	Esl = (EFI_SIGNATURE_LIST*)Buffer;
-	if (Esl->SignatureListSize == Size) {
-		// Don't free the ESL
-		Buffer = NULL;
-		goto exit;
-	}
-
-	// Check for signed ESL
-	Esl = NULL;
-	if (Buffer[0x28] != 0x30 || Buffer[0x29] != 0x82)
-		ReportErrorAndExit(L"Invalid DBX '%s'\n", Path);
-	HeaderSize = (Buffer[0x2A] << 8) | Buffer[0x2B];
-	if (HeaderSize + 0x30 + sizeof(EFI_SIGNATURE_LIST) > Size)
-		ReportErrorAndExit(L"Invalid DBX '%s'\n", Path);
-	Esl = AllocateZeroPool(Size - HeaderSize - 0x2C);
-	if (Esl == NULL)
-		ReportErrorAndExit(L"Failed to allocate ESL for '%s'\n", Path);
-	CopyMem(Esl, &Buffer[HeaderSize + 0x2C], Size - HeaderSize - 0x2C);
-	SafeFree(Buffer);
-	if (Esl->SignatureListSize != Size - HeaderSize - 0x2C) {
-		SafeFree(Esl);
-		ReportErrorAndExit(L"Invalid DBX '%s'\n", Path);
-	}
-
-exit:
-	SimpleFileClose(File);
-	FreePool(Buffer);
-
-	return Esl;
 }
 
 VOID* GenerateCredentials(
@@ -384,54 +272,39 @@ exit:
 	return Status;
 }
 
-EFI_SIGNATURE_LIST* GenerateEsl(
-	IN CONST VOID *Blob,
-	IN CONST UINTN Type
+EFI_SIGNATURE_LIST* CertToEsl(
+	CONST IN VOID *Cert
 )
 {
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	EFI_SIGNATURE_DATA *Data = NULL;
 	INTN Size;
 	UINT8 *Ptr;
-	X509 *Cert;
 	EFI_GUID OwnerGuid, *TypeGuid = NULL;
 	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
 
-	if (Blob == NULL)
+	if (Cert == NULL)
 		return NULL;
 
-	// For DBX, just duplicate the content
-	if (Type == DBX) {
-		Size = (INTN)((EFI_SIGNATURE_LIST*)Blob)->SignatureListSize;
-		if (Size > 1014 * 1024)		// Sanity check
-			ReportErrorAndExit(L"DBX is too large\n");
-		Esl = AllocateZeroPool(Size);
-		if (Esl == NULL)
-			ReportErrorAndExit(L"Failed to duplicate DBX\n");
-		CopyMem(Esl, Blob, Size);
-		return Esl;
-	}
-
-	Cert = (X509*)Blob;
-	Size = (INTN)i2d_X509(Cert, NULL);
+	Size = (INTN)i2d_X509((X509*)Cert, NULL);
 	if (Size <= 0)
 		return NULL;
 	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size);
 	if (Esl == NULL)
 		ReportErrorAndExit(L"Failed to allocate ESL\n");
 
-	switch (X509_get_signature_nid(Cert)) {
+	switch (X509_get_signature_nid((X509*)Cert)) {
 		case NID_sha256:
 		case NID_sha256WithRSAEncryption:
-			TypeGuid = &X509EslGuid.Sha256;
+			TypeGuid = &gEfiCertX509Sha256Guid;
 			break;
 		case NID_sha384:
 		case NID_sha384WithRSAEncryption:
-			TypeGuid = &X509EslGuid.Sha384;
+			TypeGuid = &gEfiCertX509Sha384Guid;
 			break;
 		case NID_sha512:
 		case NID_sha512WithRSAEncryption:
-			TypeGuid = &X509EslGuid.Sha512;
+			TypeGuid = &gEfiCertX509Sha512Guid;
 			break;
 		default:
 			break;
@@ -448,7 +321,7 @@ EFI_SIGNATURE_LIST* GenerateEsl(
 
 	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
 	Ptr = &Data->SignatureData[0];
-	i2d_X509(Cert, &Ptr);
+	i2d_X509((X509*)Cert, &Ptr);
 
 	// Derive the SignatureOwner GUID from the SHA-1 Thumbprint
 	SHA1(&Data->SignatureData[0], Size, Sha1);
@@ -461,5 +334,79 @@ EFI_SIGNATURE_LIST* GenerateEsl(
 	CopyGuid(&Data->SignatureOwner, &OwnerGuid);
 
 exit:
+	return Esl;
+}
+
+EFI_SIGNATURE_LIST* LoadToEsl(
+	IN CONST CHAR16 *Path
+)
+{
+	EFI_STATUS Status;
+	UINTN Size, HeaderSize;
+	UINT8 *Buffer = NULL;
+	CONST UINT8 *Ptr;
+	EFI_SIGNATURE_LIST* Esl = NULL;
+	EFI_VARIABLE_AUTHENTICATION_2* SignedEsl = NULL;
+	BIO *bio = NULL;
+
+	Status = SimpleFileReadAllByPath(gBaseImageHandle, Path, &Size, (VOID**)&Buffer);
+	if (EFI_ERROR(Status))
+		goto exit;
+
+	if (Size < sizeof(EFI_SIGNATURE_LIST))
+		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Path);
+
+	// Check for signed ESL (PKCS#7 only, as it's what DBX updates use)
+	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Buffer;
+	if (Size > sizeof(EFI_VARIABLE_AUTHENTICATION_2) &&
+		SignedEsl->AuthInfo.Hdr.dwLength < Size &&
+		SignedEsl->AuthInfo.Hdr.wRevision == 0x0200 &&
+		SignedEsl->AuthInfo.Hdr.wCertificateType == WIN_CERT_TYPE_EFI_GUID &&
+		CompareGuid(&SignedEsl->AuthInfo.CertType, &gEfiCertPkcs7Guid)) {
+		// TODO: OFFSET_OF or something rather than hardcoded
+		if (Buffer[0x28] != 0x30 || Buffer[0x29] != 0x82)
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
+		HeaderSize = (Buffer[0x2A] << 8) | Buffer[0x2B];
+		if (HeaderSize + 0x30 + sizeof(EFI_SIGNATURE_LIST) > Size)
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
+		Esl = AllocateZeroPool(Size - HeaderSize - 0x2C);
+		if (Esl == NULL)
+			ReportErrorAndExit(L"Failed to allocate unsigned ESL for '%s'\n", Path);
+		CopyMem(Esl, &Buffer[HeaderSize + 0x2C], Size - HeaderSize - 0x2C);
+		SafeFree(Buffer);
+		if (Esl->SignatureListSize != Size - HeaderSize - 0x2C) {
+			SafeFree(Esl);
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
+		}
+		goto exit;
+	}
+
+	// Check for a DER encoded X509 certificate
+	Ptr = Buffer;	// d2i_###() modifies the pointer
+	Esl = CertToEsl(d2i_X509(NULL, &Ptr, Size));
+	if (Esl != NULL)
+		goto exit;
+
+	// Check for a PEM encoded X509 certificate
+	bio = BIO_new_mem_buf(Buffer, Size);
+	if (bio == NULL)
+		ReportErrorAndExit(L"Failed to allocate X509 buffer\n");
+	Esl = CertToEsl(PEM_read_bio_X509(bio, NULL, NULL, NULL));
+	if (Esl != NULL)
+		goto exit;
+
+	// Check for an unsigned ESL
+	Esl = (EFI_SIGNATURE_LIST*)Buffer;
+	if (Esl->SignatureListSize == Size) {
+		Buffer = NULL;	// Don't free the ESL
+		goto exit;
+	}
+
+	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
+	Esl = NULL;
+
+exit:
+	BIO_free(bio);
+	FreePool(Buffer);
 	return Esl;
 }

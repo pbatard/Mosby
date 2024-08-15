@@ -21,28 +21,13 @@
 #include <Base.h>
 #include <Uefi.h>
 #include <Guid/ImageAuthentication.h>
+#include <Guid/WinCertificate.h>
 
 EFI_STATUS InitializePki(VOID);
-
-VOID* ReadCertificate(
-	IN CONST CHAR16 *Path
-);
-
-VOID* ReadDbx(
-	IN CONST CHAR16 *Path
-);
 
 VOID* GenerateCredentials(
 	IN CONST CHAR8 *CertName,
 	OUT VOID **GeneratedKey
-);
-
-UINT32 GetCertificateLength(
-	IN CONST VOID *Cert
-);
-
-UINT32 GetDbxLength(
-	IN CONST VOID *Dbx
 );
 
 EFI_STATUS SaveCredentials(
@@ -51,7 +36,10 @@ EFI_STATUS SaveCredentials(
 	IN CONST CHAR16 *BaseName
 );
 
-EFI_SIGNATURE_LIST* GenerateEsl(
-	IN CONST VOID *Blob,
-	IN CONST UINTN Type
+EFI_SIGNATURE_LIST* CertToEsl(
+	CONST IN VOID *Cert
+);
+
+EFI_SIGNATURE_LIST* LoadToEsl(
+	IN CONST CHAR16 *Path
 );

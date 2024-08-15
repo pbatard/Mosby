@@ -32,12 +32,12 @@ STATIC BOOLEAN gOptionSilent = FALSE;
 STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
 
-/* Attributes for the blob types we support */
+/* Attributes for the "key" types we support */
 STATIC struct {
 	CHAR8 *Name;
 	CHAR16 *VarName;
 	EFI_GUID *VarGuid;
-} BlobInfo[MAX_TYPES] = {
+} KeyInfo[MAX_TYPES] = {
 	[PK] = {
 		.Name = "PK",
 		.VarName = EFI_PLATFORM_KEY_NAME,
@@ -105,13 +105,13 @@ EFI_STATUS ParseList(
 			};
 		} else {
 			for (Type = 0; Type < MAX_TYPES; Type++) {
-				if (i + AsciiStrLen(BlobInfo[Type].Name) >= Installable->ListDataSize)
+				if (i + AsciiStrLen(KeyInfo[Type].Name) >= Installable->ListDataSize)
 					continue;
-				if (AsciiStrnCmp(BlobInfo[Type].Name, &Installable->ListData[i], AsciiStrLen(BlobInfo[Type].Name)) != 0)
+				if (AsciiStrnCmp(KeyInfo[Type].Name, &Installable->ListData[i], AsciiStrLen(KeyInfo[Type].Name)) != 0)
 					continue;
-				if (!IsWhiteSpace(Installable->ListData[i + AsciiStrLen(BlobInfo[Type].Name)]))
+				if (!IsWhiteSpace(Installable->ListData[i + AsciiStrLen(KeyInfo[Type].Name)]))
 					continue;
-				i += AsciiStrLen(BlobInfo[Type].Name);
+				i += AsciiStrLen(KeyInfo[Type].Name);
 				while (IsWhiteSpace(Installable->ListData[i]) && i < Installable->ListDataSize)
 					i++;
 				if (Installable->List[Type].NumEntries < MOSBY_MAX_ENTRIES)
@@ -190,8 +190,8 @@ exit:
 	return Status;
 }
 
-EFI_STATUS SetSecureBootVariable(
-	VOID* Data,
+STATIC EFI_STATUS SetSecureBootVariable(
+	EFI_SIGNATURE_LIST *Esl,
 	UINTN Type,
 	BOOLEAN Append
 )
@@ -201,13 +201,8 @@ EFI_STATUS SetSecureBootVariable(
 		EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
-	EFI_SIGNATURE_LIST *Esl;
 	UINT8 *VarData;
 	UINTN VarSize;
-
-	Esl = GenerateEsl(Data, Type);
-	if (Esl == NULL)
-		return EFI_INVALID_PARAMETER;
 
 	Status = gRT->GetTime(&Time, NULL);
 	if (EFI_ERROR(Status)) {
@@ -231,7 +226,7 @@ EFI_STATUS SetSecureBootVariable(
 		return Status;
 	}
 
-	Status = gRT->SetVariable(BlobInfo[Type].VarName, BlobInfo[Type].VarGuid,
+	Status = gRT->SetVariable(KeyInfo[Type].VarName, KeyInfo[Type].VarGuid,
 			VarAttributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0), VarSize, VarData);
 	SafeFree(VarData);
 	if (EFI_ERROR(Status))
@@ -253,6 +248,7 @@ EFI_STATUS EFIAPI efi_main(
 	UINT8 SecureBoot = 0, SetupMode = 0;
 	UINTN Size;
 	INTN Argc, Type, Entry;
+	VOID *Cert, *Key;
 	CHAR16 **Argv = NULL, Path[MAX_PATH];
 	INSTALLABLE_COLLECTION Installable;
 
@@ -378,48 +374,50 @@ EFI_STATUS EFIAPI efi_main(
 				CHAR16 *SelPath, Title[80];
 				EFI_HANDLE Handle = NULL;
 				UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select %a %s",
-					BlobInfo[Type].Name, (Type == DBX) ? L"binary" : L"certificate");
+					KeyInfo[Type].Name, (Type == DBX) ? L"binary" : L"certificate");
 				Status = SimpleFileSelector(&Handle,
 					(CONST CHAR16 *[]){
 						L"",
 						Title,
 						NULL
-					}, L"\\", (Type == DBX) ? L".bin|.esl" : L".cer|.crt", &SelPath);
+					}, L"\\", L".cer|.crt|.esl|.bin", &SelPath);
 				if (EFI_ERROR(Status))
 					continue;
 				StrCpyS(Path, ARRAY_SIZE(Path), SelPath);
 				FreePool(SelPath);
 			}
 
-			if (Type == DBX)
-				Installable.List[Type].Blob[Entry] = ReadDbx(Path);
-			else
-				Installable.List[Type].Blob[Entry] = ReadCertificate(Path);
+			Installable.List[Type].Esl[Entry] = LoadToEsl(Path);
 
-			if (Installable.List[Type].Blob[Entry] == NULL)
+			if (Installable.List[Type].Esl[Entry] == NULL)
 				goto exit;
 		}
 	}
 
 	/* 6. Generate a keyless PK cert if none was specified */
-	if (Installable.List[PK].Blob[0] == NULL) {
+	if (Installable.List[PK].Esl[0] == NULL) {
 		Installable.List[PK].Path[0] = "[GENERATE]";
 		Print(L"Generating PK certificate...\n");
-		Installable.List[PK].Blob[0] = GenerateCredentials("Mosby Generated PK", NULL);
-		if (Installable.List[PK].Blob[0] == NULL)
+		Cert = GenerateCredentials("Mosby Generated PK", NULL);
+		Installable.List[PK].Esl[0] = CertToEsl(Cert);
+		if (Installable.List[PK].Esl[0] == NULL) {
+			SafeFree(Cert);
 			goto exit;
+		}
 	}
 
 	/* 7. Generate DB credentials if requested */
 	for (Entry = 0; Entry < Installable.List[DB].NumEntries &&
 		AsciiStrCmp(Installable.List[DB].Path[Entry], "[GENERATE]") != 0; Entry++);
 	if (Entry < Installable.List[DB].NumEntries) {
-		VOID *Key;
 		Print(L"Generating Secure Boot signing credentials...\n");
-		Installable.List[DB].Blob[Entry] = GenerateCredentials("Secure Boot signing", &Key);
-		if (Installable.List[DB].Blob[Entry] == NULL)
+		Cert = GenerateCredentials("Secure Boot signing", &Key);;
+		Installable.List[DB].Esl[Entry] = CertToEsl(Cert);
+		if (Installable.List[DB].Esl[Entry] == NULL) {
+			SafeFree(Cert);
 			goto exit;
-		Status = SaveCredentials(Installable.List[DB].Blob[Entry], Key, MOSBY_CRED_NAME);
+		}
+		Status = SaveCredentials(Cert, Key, MOSBY_CRED_NAME);
 		if (EFI_ERROR(Status))
 			goto exit;
 		Print(L"Saved Secure Boot signing credentials as '%s'\n", MOSBY_CRED_NAME);
@@ -431,8 +429,8 @@ EFI_STATUS EFIAPI efi_main(
 			ConvertPath(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
 			if (StrCmp(Path, L"[GENERATE]") == 0)
 				StrCpyS(Path, ARRAY_SIZE(Path), L"AutoGenerated");
-			Print(L"Installing %a[%d] (from %s)\n", BlobInfo[Type].Name, Entry, Path);
-			SetStatus = SetSecureBootVariable(Installable.List[Type].Blob[Entry], Type, (Entry != 0));
+			Print(L"Installing %a[%d] (from %s)\n", KeyInfo[Type].Name, Entry, Path);
+			SetStatus = SetSecureBootVariable(Installable.List[Type].Esl[Entry], Type, (Entry != 0));
 			if (EFI_ERROR(SetStatus))
 				Status = SetStatus;
 		}
@@ -441,7 +439,7 @@ EFI_STATUS EFIAPI efi_main(
 exit:
 	for (Type = 0; Type < MAX_TYPES; Type++)
 		for (Entry = 0; Entry < MOSBY_MAX_ENTRIES; Entry++)
-			FreePool(Installable.List[Type].Blob[Entry]);
+			FreePool(Installable.List[Type].Esl[Entry]);
 	FreePool(Installable.ListData);
 	FreePool(Argv);
 	return Status;
