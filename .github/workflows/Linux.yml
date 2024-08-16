@@ -18,10 +18,8 @@ env:
   GCC5_RISCV64_PREFIX: riscv64-linux-gnu-
 
 jobs:
-  Linux-EDK2-Build:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     strategy:
       matrix:
@@ -47,15 +45,24 @@ jobs:
 #          TARGET_PKGS: gcc-riscv64-linux-gnu
 
     steps:
-    - name: Set up Linux environment
-      run: |
-        sudo apt-get update
-        sudo apt-get -y --no-install-recommends install python3-distutils uuid-dev ${{ matrix.TARGET_PKGS }}
-
     - name: Check out repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Set version
+      id: set_version
+      run: echo "version=$(git describe --tags)" >> $GITHUB_OUTPUT
+
+    - name: Create version.h file
+      run: |
+        git update-index --skip-worktree src/version.h
+        echo '#define VERSION_STRING L"${{steps.set_version.outputs.version}}"' > src/version.h
+
+    - name: Set up Linux environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y --no-install-recommends install python3-distutils uuid-dev ${{ matrix.TARGET_PKGS }}
 
     - name: Set up EDK2
       run: |
@@ -77,3 +84,48 @@ jobs:
       with:
         name: ${{ matrix.TARGET_TYPE }}
         path: ./*.efi
+
+    - name: Display SHA-256
+      run: sha256sum ./*.efi
+
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set version
+      id: set_version
+      run: echo "version=$(git describe --tags)" >> $GITHUB_OUTPUT
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Download resources
+      run: |
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?LinkId=321185 -o certs/kek_ms1.cer
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239775 -o certs/kek_ms2.cer
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321192 -o certs/db_ms1.cer
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321194 -o certs/db_ms2.cer
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239776 -o certs/db_ms3.cer
+        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239872 -o certs/db_ms4.cer
+        curl --create-dirs -L https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin -o dbx/dbx_ia32.bin
+        curl --create-dirs -L https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin -o dbx/dbx_x64.bin
+        curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin -o dbx/dbx_arm.bin
+        curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
+
+    - name: Create release archive
+      run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./image/MosbyList.txt certs/ dbx/ ./*/*.efi
+
+    - name: Create release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{secrets.GITHUB_TOKEN}}
+        body: "**Mosby ${{ steps.set_version.outputs.version }}**"
+        files: ./*.zip

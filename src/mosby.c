@@ -22,6 +22,7 @@
 #include "pki.h"
 #include "shell.h"
 #include "utf8.h"
+#include "version.h"
 
 /* Globals */
 EFI_HANDLE gBaseImageHandle = NULL;
@@ -249,23 +250,27 @@ EFI_STATUS EFIAPI efi_main(
 	UINTN Size;
 	INTN Argc, Type, Entry;
 	VOID *Cert, *Key;
-	CHAR16 **Argv = NULL, Path[MAX_PATH];
-	INSTALLABLE_COLLECTION Installable;
+	CHAR16 **Argv = NULL, **ArgvCopy, Path[MAX_PATH];
+	INSTALLABLE_COLLECTION Installable = { 0 };
 
 	gBaseImageHandle = BaseImageHandle;
 
 	/* 0. Parse arguments */
 	Status = ArgSplit(gBaseImageHandle, &Argc, &Argv);
 	if (Status == EFI_SUCCESS) {
-		while (Argc > 1 && Argv[1][0] == L'-') {
-			if (StrCmp(Argv[1], L"-t") == 0) {
+		ArgvCopy = Argv;
+		while (Argc > 1 && ArgvCopy[1][0] == L'-') {
+			if (StrCmp(ArgvCopy[1], L"-t") == 0) {
 				TestMode = TRUE;
-				Argv += 1;
+				ArgvCopy += 1;
 				Argc -= 1;
-			} else if (StrCmp(Argv[1], L"-s") == 0) {
+			} else if (StrCmp(ArgvCopy[1], L"-s") == 0) {
 				gOptionSilent = TRUE;
-				Argv += 1;
+				ArgvCopy += 1;
 				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
+				Print(L"Mosby %s\n", VERSION_STRING);
+				goto exit;
 			} else {
 				// Unsupported argument
 				break;
