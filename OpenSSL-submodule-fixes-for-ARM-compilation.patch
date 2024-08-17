@@ -1,0 +1,58 @@
+From 95bd3ef78312f593f7340913b867382694f9f97c Mon Sep 17 00:00:00 2001
+From: Pete Batard <pete@akeo.ie>
+Date: Sat, 17 Aug 2024 14:39:32 +0100
+Subject: [PATCH] OpenSSL submodule fixes for ARM compilation
+
+* Coz I really don't have time to figure out this ArmSoftFloatLib bullshit.
+* And, by the way, double randomness in drbg_add() was NEVER even used in the first place.
+---
+ crypto/params.c         | 4 ++++
+ crypto/rand/rand_meth.c | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/crypto/params.c b/crypto/params.c
+index 5fd1e0028d..50d9f9f4e9 100644
+--- a/crypto/params.c
++++ b/crypto/params.c
+@@ -709,7 +709,9 @@ OSSL_PARAM OSSL_PARAM_construct_int64(const char *key, int64_t *buf)
+ 
+ int OSSL_PARAM_get_uint64(const OSSL_PARAM *p, uint64_t *val)
+ {
++#if !defined (_M_ARM) && !defined(__arm__)
+     double d;
++#endif
+ 
+     if (val == NULL || p == NULL)
+         return 0;
+@@ -752,6 +754,7 @@ int OSSL_PARAM_get_uint64(const OSSL_PARAM *p, uint64_t *val)
+     } else if (p->data_type == OSSL_PARAM_REAL) {
+         switch (p->data_size) {
+         case sizeof(double):
++#if !defined (_M_ARM) && !defined(__arm__)
+             d = *(const double *)p->data;
+             if (d >= 0
+                     /*
+@@ -764,6 +767,7 @@ int OSSL_PARAM_get_uint64(const OSSL_PARAM *p, uint64_t *val)
+                 *val = (uint64_t)d;
+                 return 1;
+             }
++#endif
+             break;
+         }
+     }
+diff --git a/crypto/rand/rand_meth.c b/crypto/rand/rand_meth.c
+index 276763057d..74a8892127 100644
+--- a/crypto/rand/rand_meth.c
++++ b/crypto/rand/rand_meth.c
+@@ -25,7 +25,7 @@ static int drbg_add(const void *buf, int num, double randomness)
+ /* Implements the default OpenSSL RAND_seed() method */
+ static int drbg_seed(const void *buf, int num)
+ {
+-    return drbg_add(buf, num, num);
++    return drbg_add(buf, num, 0);
+ }
+ 
+ /* Implements the default OpenSSL RAND_status() method */
+-- 
+2.45.2.windows.1
+

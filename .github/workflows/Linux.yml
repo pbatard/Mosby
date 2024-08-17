@@ -37,9 +37,9 @@ jobs:
         - TARGET_TYPE: aa64
           TARGET_ARCH: AARCH64
           TARGET_PKGS: gcc-aarch64-linux-gnu
-#        - TARGET_TYPE: arm
-#          TARGET_ARCH: ARM
-#          TARGET_PKGS: gcc-arm-linux-gnueabi
+        - TARGET_TYPE: arm
+          TARGET_ARCH: ARM
+          TARGET_PKGS: gcc-arm-linux-gnueabi
 #        - TARGET_TYPE: riscv64
 #          TARGET_ARCH: RISCV64
 #          TARGET_PKGS: gcc-riscv64-linux-gnu
@@ -67,8 +67,10 @@ jobs:
     - name: Set up EDK2
       run: |
         git clone --recursive https://github.com/tianocore/edk2.git
-        # We must patch EDK2's OpenSSL to be able to import/export certificates and keys
+        # We must patch EDK2's OpenSSL module to be able to import/export certificates and keys
         patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
+        # And we must patch OpenSSL itself to fix ARM compilation
+        patch -d edk2/CryptoPkg/Library/OpensslLib/openssl -p1 -i ../../../../../OpenSSL-submodule-fixes-for-ARM-compilation.patch
         make -C edk2/BaseTools
 
     - name: Build UEFI application
@@ -127,5 +129,5 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         token: ${{secrets.GITHUB_TOKEN}}
-        body: "**Mosby ${{ steps.set_version.outputs.version }}**"
+        name: Mosby ${{ steps.set_version.outputs.version }}
         files: ./*.zip
