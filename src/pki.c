@@ -213,15 +213,22 @@ EFI_STATUS SaveCredentials(
 	if (p12 == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 
-	// Save certificate  and key as .pfx
+	// Save certificate and key as .pfx
+	Size = (INTN)i2d_PKCS12(p12, NULL);
+	if (Size <= 0)
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	Buffer = AllocateZeroPool(Size);
+	if (Buffer == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
+		ReportErrorAndExit(L"Failed to allocate PFX buffer\n");
+	}
 	Ptr = Buffer;	// i2d_###() modifies the pointer...
 	Size = (INTN)i2d_PKCS12(p12, &Ptr);
-	PKCS12_free(p12);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.pfx", BaseName);
 	Status = SimpleFileWriteAllByPath(gBaseImageHandle, Path, (UINTN)Size, Buffer);
-	OPENSSL_free(Buffer);
+	SafeFree(Buffer);
 	if (EFI_ERROR(Status))
 		goto exit;
 
@@ -268,6 +275,7 @@ EFI_STATUS SaveCredentials(
 	Status = EFI_SUCCESS;
 
 exit:
+	PKCS12_free(p12);
 	BIO_free(bio);
 	return Status;
 }
