@@ -10,7 +10,7 @@ Mosby - More Secure Secure Boot
 
 **Mosby** (*mos⸱bee*), which stands for *More Secure Secure Boot, for **You***, is a UEFI
 Shell application designed to easily create and install a more secure (and more up to date)
-default set of UEFI Secure Boot keys that includes your own  Secure Boot signing credentials,
+default set of UEFI Secure Boot keys that includes your own Secure Boot signing credentials,
 as well as a **unique**, non-exploitable, machine Primary Key (PK).
 
 The motivation behind this is fourfold:
@@ -82,6 +82,9 @@ curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpda
 curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
 ```
 
+Note that the most recent version of these files (at the time a the release was created) is
+provided in the release archive.
+
 ## Compilation
 
 [TODO]
@@ -90,9 +93,9 @@ curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUp
 
 ### How do I use the generated Secure Boot key to sign a UEFI bootloader?
 
-* On Windows, use `signtool.exe` with the `.pfx`:
+* On Windows, use `signtool.exe` with the `.pfx`. For example, to sign `bootx64.efi`:
 ```
-signtool sign /f "Mosby Secure Boot Signing.pfx" /fd SHA256 Mosby.efi
+signtool sign /f "Mosby Secure Boot Signing.pfx" /fd SHA256 bootx64.efi
 ```
 
 Note that you can download `signtool.exe` with the command:
@@ -136,8 +139,8 @@ running `Mosby`.
    enacted in a similar way as
    [what applies to our UEFI-Shell binaries](https://github.com/pbatard/UEFI-Shell?tab=readme-ov-file#binary-validation).
 3. It's published by the same developer as the person behind [Rufus](https://rufus.ie), which
-   is a rather popular and **trusted** application, that has helped countless people install
-   bootloaders and run privileged code on their computer for over than 10 years now. In short
-   if the ultimate goal of the developer of Mosby was to gain the ability to exploit your
-   computer, they would have had plenty of other opportunities to do so over the last decade,
-   and be publicly reported if they did so.
+   is a rather popular and **trusted** application, that, for more than 10 years now, has
+   helped countless people install bootloaders and run privileged code on their computer. In
+   short if the ultimate goal of the developer of Mosby was to gain the ability to exploit
+   your computer, they would have had plenty of other opportunities to do so over the last
+   decade, and, more importantly, would long have been reported if they ever did so.

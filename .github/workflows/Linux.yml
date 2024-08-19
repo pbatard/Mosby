@@ -45,6 +45,7 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@v4
       with:
+        submodules: recursive
         fetch-depth: 0
 
     - name: Set version
@@ -63,7 +64,6 @@ jobs:
 
     - name: Set up EDK2
       run: |
-        git clone --recursive https://github.com/tianocore/edk2.git
         # We must patch EDK2's OpenSSL module to be able to import/export certificates and keys
         patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
         # And we must patch OpenSSL itself to fix ARM and RISCV64 compilation
