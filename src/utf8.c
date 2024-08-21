@@ -18,6 +18,7 @@
 
 #include <Base.h>
 #include <Uefi.h>
+#include <Library/BaseMemoryLib.h>
 
 /* Shorthand for Unicode strings */
 typedef UINT32              CHAR32;
@@ -31,8 +32,8 @@ typedef UINT32              CHAR32;
   @return The next Unicode character or (CHAR32)-1 on error.
 **/
 STATIC CHAR32 GetNextUnicodeChar(
-	IN CONST CHAR8* Start,
-	OUT UINTN* Size
+	IN CONST CHAR8 *Start,
+	OUT UINTN *Size
 )
 {
 	CHAR32 UnicodeChar = (CHAR32)-1;
@@ -89,57 +90,159 @@ STATIC CHAR32 GetNextUnicodeChar(
 }
 
 /**
-  Convert a UTF-8 encoded string to a UCS-2 encoded string.
+  Convert a UTF-8 encoded string to a UTF-16 encoded string.
 
-  @param[in]  Utf8String      A pointer to the input UTF-8 encoded string.
-  @param[out] Ucs2String      A pointer to the output UCS-2 encoded string.
-  @param[in]  Ucs2StringSize  The size of the Ucs2String buffer (in CHAR16).
+  @param[in]  Utf8String         A pointer to the input UTF-8 encoded string.
+  @param[out] Utf16String        A pointer to the output UTF-16 encoded string.
+  @param[in]  Utf16StringSize    The size of the Utf16String buffer (in CHAR16).
 
   @retval EFI_SUCCESS            The conversion was successful.
   @retval EFI_INVALID_PARAMETER  One or more of the input parameters are invalid.
   @retval EFI_BUFFER_TOO_SMALL   The output buffer is too small to hold the result.
 **/
-EFI_STATUS Utf8ToUcs2(
-	IN CONST CHAR8* Utf8String,
-	OUT CHAR16* Ucs2String,
-	IN CONST UINTN Ucs2StringSize
+EFI_STATUS Utf8ToUtf16(
+	IN CONST CHAR8 *Utf8String,
+	OUT CHAR16 *Utf16String,
+	IN CONST UINTN Utf16StringSize
 )
 {
 	CHAR32 UnicodeChar;
-	UINTN Size, Index = 0, Ucs2Index = 0;
+	UINTN Size, Utf8Index = 0, Utf16Index = 0;
 
-	if (Utf8String == NULL || Ucs2String == NULL)
+	if (Utf8String == NULL || Utf16String == NULL)
 		return EFI_INVALID_PARAMETER;
 
 	// Iterate through the UTF-8 string
-	while (Utf8String[Index] != '\0') {
+	while (Utf8String[Utf8Index] != '\0') {
 		// Decode UTF-8 character to Unicode
-		UnicodeChar = GetNextUnicodeChar(&Utf8String[Index], &Size);
+		UnicodeChar = GetNextUnicodeChar(&Utf8String[Utf8Index], &Size);
 
 		// Check for decoding errors
 		if (UnicodeChar == (CHAR32)-1 || Size == 0)
 			return EFI_INVALID_PARAMETER;
 
 		// Increment the index by the size of the UTF-8 character
-		Index += Size;
+		Utf8Index += Size;
 
-		// Encode Unicode character to UCS-2
+		// Encode Unicode character to UTF-16
 		if (UnicodeChar > 0xFFFF) {
 			// Convert to surrogate pair
-			if (Ucs2Index + 2 >= Ucs2StringSize)
+			if (Utf16Index + 2 >= Utf16StringSize)
 				return EFI_BUFFER_TOO_SMALL;
 			UnicodeChar -= 0x10000;
-			Ucs2String[Ucs2Index++] = (CHAR16)(0xD800 + (UnicodeChar >> 10));
-			Ucs2String[Ucs2Index++] = (CHAR16)(0xDC00 + (UnicodeChar & 0x3FF));
+			Utf16String[Utf16Index++] = (CHAR16)(0xD800 + (UnicodeChar >> 10));
+			Utf16String[Utf16Index++] = (CHAR16)(0xDC00 + (UnicodeChar & 0x3FF));
 		} else {
-			if (Ucs2Index + 1 >= Ucs2StringSize)
+			if (Utf16Index + 1 >= Utf16StringSize)
 				return EFI_BUFFER_TOO_SMALL;
-			Ucs2String[Ucs2Index++] = (CHAR16)UnicodeChar;
+			Utf16String[Utf16Index++] = (CHAR16)UnicodeChar;
 		}
 	}
 
-	// NUL-terminate the UCS-2 string
-	Ucs2String[Ucs2Index] = L'\0';
+	// NUL-terminate the UTF-16 string
+	Utf16String[Utf16Index] = L'\0';
+
+	return EFI_SUCCESS;
+}
+
+/**
+  Encode a UTF-16 sequence into a UTF-8 sequence.
+
+  @param[in]  Utf16Ptr   A reference to the pointer of the start of the UTF-16 sequence.
+                         This pointer is incremented as the UTF-16 string is read.
+  @param[out] Size       A pointer to the variable that receives the size of the encoded UTF-8 sequence.
+
+  @return The UTF-8 sequence. On error *Size is set to 0.
+**/
+STATIC CHAR8* GetNextUtf8Sequence(
+	IN CHAR16 **Utf16Ptr,
+	OUT UINTN *Size
+)
+{
+	STATIC CHAR8 Utf8Sequence[4];
+	CHAR16 Utf16Char, HighSurrogate, LowSurrogate;
+	CHAR32 UnicodeChar;
+
+	Utf16Char = **Utf16Ptr;
+	if (Utf16Char <= 0x007F) {
+		Utf8Sequence[0] = (CHAR8)**Utf16Ptr;
+		*Size = 1;
+		// Increment only if we haven't reached the NUL terminator
+		if (Utf16Char != L'\0')
+			(*Utf16Ptr)++;
+	} else if (Utf16Char <= 0x07FF) {
+		Utf8Sequence[0] = (CHAR8)(0xC0 | ((Utf16Char >> 6) & 0x1F));
+		Utf8Sequence[1] = (CHAR8)(0x80 | (Utf16Char & 0x3F));
+		*Size = 2;
+		(*Utf16Ptr)++;
+	} else if (Utf16Char >= 0xD800 && Utf16Char <= 0xDBFF) {
+		// Surrogate pair handling
+		HighSurrogate = Utf16Char;
+		(*Utf16Ptr)++;
+		LowSurrogate = **Utf16Ptr;
+		// Increment only if we haven't reached the NUL terminator
+		if (LowSurrogate != L'\0')
+			(*Utf16Ptr)++;
+		if (LowSurrogate < 0xDC00 || LowSurrogate > 0xDFFF) {
+			Utf8Sequence[0] = '\0';	// Invalid surrogate pair
+			*Size = 0;
+		} else {
+			UnicodeChar = (((CHAR32)(HighSurrogate - 0xD800) << 10) |
+						   (CHAR32)(LowSurrogate - 0xDC00)) + 0x10000;
+			Utf8Sequence[0] = (CHAR8)(0xF0 | ((UnicodeChar >> 18) & 0x07));
+			Utf8Sequence[1] = (CHAR8)(0x80 | ((UnicodeChar >> 12) & 0x3F));
+			Utf8Sequence[2] = (CHAR8)(0x80 | ((UnicodeChar >> 6) & 0x3F));
+			Utf8Sequence[3] = (CHAR8)(0x80 | (UnicodeChar & 0x3F));
+			*Size = 4;
+		}
+	} else {
+		Utf8Sequence[0] = (CHAR8)(0xE0 | ((Utf16Char >> 12) & 0x0F));
+		Utf8Sequence[1] = (CHAR8)(0x80 | ((Utf16Char >> 6) & 0x3F));
+		Utf8Sequence[2] = (CHAR8)(0x80 | (Utf16Char & 0x3F));
+		*Size = 3;
+		(*Utf16Ptr)++;
+	}
+
+	return Utf8Sequence;
+}
+
+/**
+  Convert a UTF-16 encoded string to a UTF-8 encoded string.
+
+  @param[in]  Utf16String        A pointer to the input UTF-8 encoded string.
+  @param[out] Utf8String         A pointer to the output UTF-16 encoded string.
+  @param[in]  Utf8StringSize     The size of the Utf8String buffer (in CHAR8).
+
+  @retval EFI_SUCCESS            The conversion was successful.
+  @retval EFI_INVALID_PARAMETER  One or more of the input parameters are invalid.
+  @retval EFI_BUFFER_TOO_SMALL   The output buffer is too small to hold the result.
+**/
+EFI_STATUS Utf16ToUtf8(
+	IN CONST CHAR16 *Utf16String,
+	OUT CHAR8 *Utf8String,
+	IN CONST UINTN Utf8StringSize
+)
+{
+	UINTN Size, Utf8Index = 0;
+	CHAR8 *Utf8Seq;
+	CHAR16 *Utf16Ptr;
+
+	if (Utf16String == NULL || Utf8String == NULL)
+		return EFI_INVALID_PARAMETER;
+
+	Utf16Ptr = (CHAR16*)Utf16String;
+	while (*Utf16Ptr != L'\0') {
+		Utf8Seq = GetNextUtf8Sequence(&Utf16Ptr, &Size);
+		if (Size == 0)
+			return EFI_INVALID_PARAMETER;
+		if (Size + Utf8Index + 1 > Utf8StringSize)
+			return EFI_BUFFER_TOO_SMALL;
+		CopyMem(&Utf8String[Utf8Index], Utf8Seq, Size);
+		Utf8Index += Size;
+	}
+
+	// NUL-terminate the UTF-8 string
+	Utf8String[Utf8Index] = 0;
 
 	return EFI_SUCCESS;
 }

@@ -620,7 +620,7 @@ STATIC CONST CHAR16* GetDeviceHandleFromPath(
 	UINTN ColumnPos;
 	CHAR16 DriveName[64];
 
-	// Default to using the same device as our current executable
+	// Default to using the same device the one from the Image passed as parameter
 	Status = gBS->HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (VOID**)&LoadedImage);
 	*DeviceHandle = EFI_ERROR(Status) ? NULL : LoadedImage->DeviceHandle;
 
@@ -696,4 +696,21 @@ EFI_STATUS SimpleFileWriteAllByPath(
 exit:
 	SimpleFileClose(File);
 	return Status;
+}
+
+BOOLEAN SimpleFileExistsByPath(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16* Path
+)
+{
+	EFI_STATUS Status;
+	EFI_HANDLE DeviceHandle;
+	EFI_FILE_HANDLE File = NULL;
+	CONST CHAR16 *PathStart;
+
+	PathStart = GetDeviceHandleFromPath(Image, Path, &DeviceHandle);
+	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
+		PathStart, &File, EFI_FILE_MODE_READ);
+	SimpleFileClose(File);
+	return (Status == EFI_SUCCESS);
 }

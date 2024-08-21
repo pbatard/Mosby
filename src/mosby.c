@@ -165,7 +165,7 @@ STATIC EFI_STATUS ConvertPath(
 		Old = *Ptr;
 		*Ptr = 0;
 		if (*Src != '\0') {
-			Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
+			Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
 			if (EFI_ERROR(Status))
 				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 			Status = StrCatS(Dst, DstLen, Frag);
@@ -179,7 +179,7 @@ STATIC EFI_STATUS ConvertPath(
 		*Ptr = Old;
 	}
 	if (*Src != '\0') {
-		Status = Utf8ToUcs2(Src, Frag, ARRAY_SIZE(Frag));
+		Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
 		Status = StrCatS(Dst, DstLen, Frag);
@@ -250,6 +250,7 @@ EFI_STATUS EFIAPI efi_main(
 	UINTN Size;
 	INTN Argc, Type, Entry;
 	VOID *Cert, *Key;
+	CHAR8 Utf8Path[MAX_PATH];
 	CHAR16 **Argv = NULL, **ArgvCopy, Path[MAX_PATH];
 	INSTALLABLE_COLLECTION Installable = { 0 };
 
@@ -268,15 +269,14 @@ EFI_STATUS EFIAPI efi_main(
 				gOptionSilent = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
-			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
-				Print(L"Mosby %s\n", VERSION_STRING);
-				goto exit;
 			} else {
 				// Unsupported argument
 				break;
 			}
 		}
 	}
+
+	Print(L"Mosby %s\n", VERSION_STRING);
 
 	/* 1. Verify that the platform is in Setup Mode */
 	if (!TestMode) {
@@ -288,7 +288,8 @@ EFI_STATUS EFIAPI efi_main(
 		Status = gRT->GetVariable(L"SetupMode", &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
 		if (EFI_ERROR(Status) || SecureBoot != 0 || SetupMode == 0) {
 			Status = EFI_UNSUPPORTED;
-			ReportErrorAndExit(L"This platform is not in Setup Mode.\n");
+			ReportErrorAndExit(L"ERROR: This platform is not in Setup Mode.\n");
+			// TODO: More explanatory error message and possibly automate switch to Setup?
 		}
 	}
 
@@ -334,9 +335,21 @@ EFI_STATUS EFIAPI efi_main(
 	for (Type = 0; Type < MAX_TYPES; Type++) {
 		for (Entry = 0; Entry < Installable.List[Type].NumEntries && Installable.List[Type].Path[Entry] != NULL; Entry++) {
 
-			// DB/PK types have a special GENERATE and PROMPT mode
+			// DB/PK types have modes such as [DETECT], [GENERATE], [PROMPT]
 			if ((Type == DB || Type == PK) && AsciiStrCmp(Installable.List[Type].Path[Entry], "[GENERATE]") == 0)
 				continue;
+
+			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[DETECT]") == 0) {
+				// If we have an existing cert for a previously generated DB credential, try to reuse it
+				UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.crt", MOSBY_CRED_NAME);
+				// Default to [PROMPT] if we can't access an exisiting cert
+				Installable.List[Type].Path[Entry] = "[PROMPT]";
+				if (SimpleFileExistsByPath(gBaseImageHandle, Path) &&
+					Utf16ToUtf8(Path, Utf8Path, ARRAY_SIZE(Path)) == EFI_SUCCESS) {
+					Print(L"Reusing existing '%s' certificate for DB\n", Path);
+					Installable.List[Type].Path[Entry] = Utf8Path;
+				}
+			}
 
 			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[PROMPT]") == 0) {
 				INTN Sel = ConsoleSelect(
@@ -358,7 +371,8 @@ EFI_STATUS EFIAPI efi_main(
 						L"DON'T INSTALL",
 						NULL
 					}, 1);
-				// TODO: handle Esc
+				// TODO: Handle Esc
+				// TODO: Clear screen after selection
 				if (Sel == 0) {
 					Installable.List[Type].Path[Entry] = "[SELECT]";
 				} else if (Sel == 1) {

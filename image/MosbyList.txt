@@ -10,13 +10,15 @@
 # curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin -o dbx/dbx_arm.bin
 # curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
 PK [GENERATE]
+# 'kek_ms1.cer' ("Microsoft Corporation KEK CA 2011") expires on 2026-06-24
 KEK certs\kek_ms1.cer
 KEK certs\kek_ms2.cer
-# ms_db1.cer ("Microsoft Windows Production PCA 2011") should ultimately be commented out as it is being revoked by Microsoft
+# 'ms_db1.cer' ("Microsoft Windows Production PCA 2011") should ultimately be commented out as it is being revoked by Microsoft
 DB certs\db_ms1.cer
+# 'db_ms2.cer' ("Microsoft Corporation UEFI CA 2011") expires on 2026.06.27
 DB certs\db_ms2.cer
 DB certs\db_ms3.cer
 DB certs\db_ms4.cer
-DB [GENERATE]
-# %ARCH% will be replaced with the runtime arch ('x64', 'ia32', 'arm', 'aa64')
+DB [DETECT]
+# %ARCH% will be replaced with the actual runtime arch ('x64', 'ia32', 'arm', 'aa64')
 DBX dbx\dbx_%ARCH%.bin

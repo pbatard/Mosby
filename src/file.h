@@ -109,3 +109,8 @@ EFI_STATUS SimpleFileWriteAllByPath(
 	IN CONST UINTN Size,
 	IN CONST VOID *Buffer
 );
+
+BOOLEAN SimpleFileExistsByPath(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16* Path
+);
