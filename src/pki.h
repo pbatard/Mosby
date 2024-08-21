@@ -20,8 +20,6 @@
 
 #include <Base.h>
 #include <Uefi.h>
-#include <Guid/ImageAuthentication.h>
-#include <Guid/WinCertificate.h>
 
 EFI_STATUS InitializePki(VOID);
 

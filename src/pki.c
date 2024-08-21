@@ -21,6 +21,10 @@
 #include "file.h"
 #include "pki.h"
 
+#include <Guid/ImageAuthentication.h>
+#include <Guid/WinCertificate.h>
+#include <Protocol/LoadedImage.h>
+
 /* OpenSSL */
 #undef _WIN32
 #undef _WIN64
@@ -57,10 +61,24 @@ STATIC int OpenSSLErrorCallback(
 
 EFI_STATUS InitializePki(VOID)
 {
-	// TODO: Derive from clock or something?
 	CONST CHAR8 DefaultSeed[] = "Mosby crypto default seed";
+	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+	CHAR16 *Seed = NULL;
 
-	RAND_seed(DefaultSeed, sizeof(DefaultSeed));
+	// Try to use the loaded image's DevicePath (of the DeviceHandle) as our seed since
+	// it is both unique enough and *not* time-based (therefore harder to guess).
+	// We convert it to text form first, as a DevicePath binary on its own is typically
+	// just a short set of references to existing system DevicePath elements.
+	if (gBS->HandleProtocol(gBaseImageHandle, &gEfiLoadedImageProtocolGuid, (VOID**)&LoadedImage) == EFI_SUCCESS)
+		Seed = ConvertDevicePathToText(DevicePathFromHandle(LoadedImage->DeviceHandle), FALSE, FALSE);
+
+	if (Seed != NULL && Seed[0] != L'\0') {
+		RAND_seed(Seed, StrLen(Seed));
+	} else {
+		Print(L"Notice: Using hardcoded default random seed\n");
+		RAND_seed(DefaultSeed, sizeof(DefaultSeed));
+	}
+	FreePool(Seed);
 	return (RAND_status() != 1) ? EFI_UNSUPPORTED : EFI_SUCCESS;
 }
 
@@ -371,18 +389,20 @@ EFI_SIGNATURE_LIST* LoadToEsl(
 		SignedEsl->AuthInfo.Hdr.wRevision == 0x0200 &&
 		SignedEsl->AuthInfo.Hdr.wCertificateType == WIN_CERT_TYPE_EFI_GUID &&
 		CompareGuid(&SignedEsl->AuthInfo.CertType, &gEfiCertPkcs7Guid)) {
-		// TODO: OFFSET_OF or something rather than hardcoded
-		if (Buffer[0x28] != 0x30 || Buffer[0x29] != 0x82)
+		if (SignedEsl->AuthInfo.CertData[0] != 0x30 || SignedEsl->AuthInfo.CertData[1] != 0x82)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		HeaderSize = (Buffer[0x2A] << 8) | Buffer[0x2B];
-		if (HeaderSize + 0x30 + sizeof(EFI_SIGNATURE_LIST) > Size)
+		HeaderSize = (SignedEsl->AuthInfo.CertData[2] << 8) | SignedEsl->AuthInfo.CertData[3];
+		HeaderSize += OFFSET_OF(EFI_VARIABLE_AUTHENTICATION_2, AuthInfo);
+		HeaderSize += OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData);
+		HeaderSize += 4;	// For the 4 extra bytes above
+		if (HeaderSize + sizeof(EFI_SIGNATURE_LIST) > Size)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		Esl = AllocateZeroPool(Size - HeaderSize - 0x2C);
+		Esl = AllocateZeroPool(Size - HeaderSize);
 		if (Esl == NULL)
 			ReportErrorAndExit(L"Failed to allocate unsigned ESL for '%s'\n", Path);
-		CopyMem(Esl, &Buffer[HeaderSize + 0x2C], Size - HeaderSize - 0x2C);
+		CopyMem(Esl, &Buffer[HeaderSize], Size - HeaderSize);
 		SafeFree(Buffer);
-		if (Esl->SignatureListSize != Size - HeaderSize - 0x2C) {
+		if (Esl->SignatureListSize != Size - HeaderSize) {
 			SafeFree(Esl);
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
 		}
