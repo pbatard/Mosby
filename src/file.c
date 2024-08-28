@@ -27,11 +27,11 @@
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Library/ShellLib.h>
 
 #include <Guid/FileSystemInfo.h>
 #include <Guid/FileSystemVolumeLabelInfo.h>
 #include <Protocol/LoadedImage.h>
-#include <Library/ShellLib.h>
 
 #define FileReportErrorAndExit(...) do { Print(__VA_ARGS__); goto exit; } while(0)
 
@@ -707,10 +707,20 @@ BOOLEAN SimpleFileExistsByPath(
 	EFI_HANDLE DeviceHandle;
 	EFI_FILE_HANDLE File = NULL;
 	CONST CHAR16 *PathStart;
+	EFI_FILE_INFO *Info;
+	UINT8 Buf[1024];
+	UINTN Size;
+
+	Size = sizeof(Buf);
+	Info = (VOID *)Buf;
 
 	PathStart = GetDeviceHandleFromPath(Image, Path, &DeviceHandle);
 	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
 		PathStart, &File, EFI_FILE_MODE_READ);
+	if (!EFI_ERROR(Status))
+		Status = File->GetInfo(File, &gEfiFileInfoGuid, &Size, Info);
+	if (!EFI_ERROR(Status) && Info->Attribute & EFI_FILE_DIRECTORY)
+		Status = EFI_INVALID_PARAMETER;
 	SimpleFileClose(File);
 	return (Status == EFI_SUCCESS);
 }

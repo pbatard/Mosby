@@ -375,6 +375,9 @@ EFI_SIGNATURE_LIST* LoadToEsl(
 	EFI_VARIABLE_AUTHENTICATION_2* SignedEsl = NULL;
 	BIO *bio = NULL;
 
+	if (!SimpleFileExistsByPath(gBaseImageHandle, Path))
+		ReportErrorAndExit(L"File '%s' does not exist\n", Path);
+
 	Status = SimpleFileReadAllByPath(gBaseImageHandle, Path, &Size, (VOID**)&Buffer);
 	if (EFI_ERROR(Status))
 		goto exit;
@@ -430,8 +433,8 @@ EFI_SIGNATURE_LIST* LoadToEsl(
 		goto exit;
 	}
 
-	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
 	Esl = NULL;
+	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
 
 exit:
 	BIO_free(bio);

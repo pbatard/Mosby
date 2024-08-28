@@ -71,6 +71,80 @@ STATIC struct {
 	}
 };
 
+STATIC CHAR16* StrDup(
+	IN CONST CHAR16* Src
+)
+{
+	CHAR16* Dst;
+
+	if (Src == NULL)
+		return NULL;
+
+	Dst = AllocateZeroPool((StrLen(Src) + 1) * sizeof(CHAR16));
+	if (Dst != NULL)
+		CopyMem(Dst, Src, (StrLen(Src) + 1) * sizeof(CHAR16));
+
+	return Dst;
+}
+
+/* Convert a UTF-8 path to UTF-16 while replacing any %ARCH% token */
+STATIC CHAR16* ConvertPath(
+	IN CHAR8 *Src
+)
+{
+	EFI_STATUS Status = EFI_INVALID_PARAMETER;
+	CONST CHAR8 *Token = "%ARCH%";
+	// Use the same arch names as the suffixes used for UEFI bootloaders
+#if defined(_M_X64) || defined(__x86_64__)
+	CONST CHAR16 *Rep = L"x64";
+#elif defined(_M_IX86) || defined(__i386__)
+	CONST CHAR16 *Rep = L"ia32";
+#elif defined (_M_ARM64) || defined(__aarch64__)
+	CONST CHAR16 *Rep = L"aa64";
+#elif defined (_M_ARM) || defined(__arm__)
+	CONST CHAR16 *Rep = L"arm";
+#elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
+	CONST CHAR16 *Rep = L"riscv64";
+#else
+#	error Unsupported architecture
+#endif
+	CHAR16 Dst[MAX_PATH], Frag[MAX_PATH];
+	CHAR8 *Ptr, Old;
+
+	if (AsciiStrLen(Src) > MAX_PATH)
+		ReportErrorAndExit(L"Path data is longer than %d characters\n", MAX_PATH);
+
+	*Dst = L'\0';
+	while ((Ptr = AsciiStrStr(Src, Token)) != NULL) {
+		Old = *Ptr;
+		*Ptr = 0;
+		if (*Src != '\0') {
+			Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
+			Status = StrCatS(Dst, MAX_PATH, Frag);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
+		}
+		Status = StrCatS(Dst, MAX_PATH, Rep);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
+		Src = &Ptr[AsciiStrLen(Token)];
+		*Ptr = Old;
+	}
+	if (*Src != '\0') {
+		Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
+		Status = StrCatS(Dst, MAX_PATH, Frag);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
+	}
+
+exit:
+	return EFI_ERROR(Status) ? NULL : StrDup(Dst);
+}
+
 EFI_STATUS ParseList(
 	IN CONST CHAR16 *ListFileName,
 	OUT INSTALLABLE_COLLECTION *Installable
@@ -115,8 +189,13 @@ EFI_STATUS ParseList(
 				i += AsciiStrLen(KeyInfo[Type].Name);
 				while (IsWhiteSpace(Installable->ListData[i]) && i < Installable->ListDataSize)
 					i++;
-				if (Installable->List[Type].NumEntries < MOSBY_MAX_ENTRIES)
-					Installable->List[Type].Path[Installable->List[Type].NumEntries++] = &Installable->ListData[i];
+				if (Installable->List[Type].NumEntries < MOSBY_MAX_ENTRIES) {
+					Installable->List[Type].Path[Installable->List[Type].NumEntries] =
+						ConvertPath(&Installable->ListData[i]);
+					if (Installable->List[Type].Path[Installable->List[Type].NumEntries] == NULL)
+						return EFI_NO_MAPPING;
+					Installable->List[Type].NumEntries++;
+				}
 				break;
 			}
 			if (Type >= MAX_TYPES) {
@@ -134,63 +213,7 @@ exit:
 	return Status;
 }
 
-/* Convert an UTF8 path to UCS2 while replacing any %ARCH% token */
-STATIC EFI_STATUS ConvertPath(
-	IN CHAR8 *Src,
-	IN OUT CHAR16 *Dst,
-	IN UINTN DstLen
-)
-{
-	EFI_STATUS Status;
-	CONST CHAR8 *Token = "%ARCH%";
-	// Use the same arch names as the suffixes used for UEFI bootloaders
-#if defined(_M_X64) || defined(__x86_64__)
-	CONST CHAR16 *Rep = L"x64";
-#elif defined(_M_IX86) || defined(__i386__)
-	CONST CHAR16 *Rep = L"ia32";
-#elif defined (_M_ARM64) || defined(__aarch64__)
-	CONST CHAR16 *Rep = L"aa64";
-#elif defined (_M_ARM) || defined(__arm__)
-	CONST CHAR16 *Rep = L"arm";
-#elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
-	CONST CHAR16 *Rep = L"riscv64";
-#else
-#	error Unsupported architecture
-#endif
-	CHAR16 Frag[MAX_PATH];
-	CHAR8 *Ptr, Old;
-
-	*Dst = 0;
-	while ((Ptr = AsciiStrStr(Src, Token)) != NULL) {
-		Old = *Ptr;
-		*Ptr = 0;
-		if (*Src != '\0') {
-			Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-			Status = StrCatS(Dst, DstLen, Frag);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		}
-		Status = StrCatS(Dst, DstLen, Rep);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		Src = &Ptr[AsciiStrLen(Token)];
-		*Ptr = Old;
-	}
-	if (*Src != '\0') {
-		Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		Status = StrCatS(Dst, DstLen, Frag);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-	}
-
-exit:
-	return Status;
-}
-
+// We can't use EnrollFromInput() since it doesn't support Appending.
 STATIC EFI_STATUS SetSecureBootVariable(
 	EFI_SIGNATURE_LIST *Esl,
 	UINTN Type,
@@ -250,10 +273,10 @@ EFI_STATUS EFIAPI efi_main(
 	UINTN Size;
 	INTN Argc, Type, Entry;
 	VOID *Cert, *Key;
-	CHAR8 Utf8Path[MAX_PATH];
 	CHAR16 **Argv = NULL, **ArgvCopy, Path[MAX_PATH];
 	INSTALLABLE_COLLECTION Installable = { 0 };
 
+	Print(L"Mosby %s\n", VERSION_STRING);
 	gBaseImageHandle = BaseImageHandle;
 
 	/* 0. Parse arguments */
@@ -269,6 +292,8 @@ EFI_STATUS EFIAPI efi_main(
 				gOptionSilent = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
+				goto exit;
 			} else {
 				// Unsupported argument
 				break;
@@ -276,17 +301,15 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
-	Print(L"Mosby %s\n", VERSION_STRING);
-
 	/* 1. Verify that the platform is in Setup Mode */
 	if (!TestMode) {
 		Size = sizeof(SecureBoot);
-		Status = gRT->GetVariable(L"SecureBoot", &gEfiGlobalVariableGuid, NULL, &Size, &SecureBoot);
+		Status = gRT->GetVariable(EFI_SECURE_BOOT_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SecureBoot);
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"This platform does not support Secure Boot.\n");
 		Size = sizeof(SetupMode);
-		Status = gRT->GetVariable(L"SetupMode", &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
-		if (EFI_ERROR(Status) || SecureBoot != 0 || SetupMode == 0) {
+		Status = gRT->GetVariable(EFI_SETUP_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
+		if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE) {
 			Status = EFI_UNSUPPORTED;
 			ReportErrorAndExit(L"ERROR: This platform is not in Setup Mode.\n");
 			// TODO: More explanatory error message and possibly automate switch to Setup?
@@ -333,25 +356,27 @@ EFI_STATUS EFIAPI efi_main(
 
 	/* 5. Load and validate the support files (KEKs, DBs, DBX, etc) */
 	for (Type = 0; Type < MAX_TYPES; Type++) {
-		for (Entry = 0; Entry < Installable.List[Type].NumEntries && Installable.List[Type].Path[Entry] != NULL; Entry++) {
+		for (Entry = 0; Entry < Installable.List[Type].NumEntries; Entry++) {
 
-			// DB/PK types have modes such as [DETECT], [GENERATE], [PROMPT]
-			if ((Type == DB || Type == PK) && AsciiStrCmp(Installable.List[Type].Path[Entry], "[GENERATE]") == 0)
+			if (Installable.List[Type].Path[Entry] == NULL)
 				continue;
 
-			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[DETECT]") == 0) {
+			// DB/PK types have modes such as [DETECT], [GENERATE], [PROMPT]
+			if ((Type == DB || Type == PK) && StrCmp(Installable.List[Type].Path[Entry], L"[GENERATE]") == 0)
+				continue;
+
+			if (Type == DB && StrCmp(Installable.List[Type].Path[Entry], L"[DETECT]") == 0) {
+				SafeFree(Installable.List[Type].Path[Entry]);
 				// If we have an existing cert for a previously generated DB credential, try to reuse it
-				UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.crt", MOSBY_CRED_NAME);
-				// Default to [PROMPT] if we can't access an exisiting cert
-				Installable.List[Type].Path[Entry] = "[PROMPT]";
-				if (SimpleFileExistsByPath(gBaseImageHandle, Path) &&
-					Utf16ToUtf8(Path, Utf8Path, ARRAY_SIZE(Path)) == EFI_SUCCESS) {
-					Print(L"Reusing existing '%s' certificate for DB\n", Path);
-					Installable.List[Type].Path[Entry] = Utf8Path;
-				}
+				UnicodeSPrint(Path, MAX_PATH, L"%s.crt", MOSBY_CRED_NAME);
+				// Switch to [PROMPT] if we can't access an exisiting cert
+				if (SimpleFileExistsByPath(gBaseImageHandle, Path))
+					Installable.List[Type].Path[Entry] = StrDup(Path);
+				else
+					Installable.List[Type].Path[Entry] = StrDup(L"[PROMPT]");
 			}
 
-			if (Type == DB && AsciiStrCmp(Installable.List[Type].Path[Entry], "[PROMPT]") == 0) {
+			if (Type == DB && StrCmp(Installable.List[Type].Path[Entry], L"[PROMPT]") == 0) {
 				INTN Sel = ConsoleSelect(
 					(CONST CHAR16 *[]){
 						L"DB credentials installation",
@@ -371,27 +396,23 @@ EFI_STATUS EFIAPI efi_main(
 						L"DON'T INSTALL",
 						NULL
 					}, 1);
-				// TODO: Handle Esc
 				// TODO: Clear screen after selection
+				SafeFree(Installable.List[Type].Path[Entry]);
 				if (Sel == 0) {
-					Installable.List[Type].Path[Entry] = "[SELECT]";
+					Installable.List[Type].Path[Entry] = StrDup(L"[SELECT]");
 				} else if (Sel == 1) {
-					Installable.List[Type].Path[Entry] = "[GENERATE]";
+					Installable.List[Type].Path[Entry] = StrDup(L"[GENERATE]");
 					continue;
 				} else {
-					Installable.List[Type].Path[Entry] = "[NONE]";
+					Installable.List[Type].Path[Entry] = NULL;
 					continue;
 				}
-				break;
 			}
 
-			Status = ConvertPath(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
-			if (EFI_ERROR(Status))
-				goto exit;
-
-			if (StrCmp(Path, L"[SELECT]") == 0) {
-				CHAR16 *SelPath, Title[80];
+			if (StrCmp(Installable.List[Type].Path[Entry], L"[SELECT]") == 0) {
+				CHAR16 Title[80];
 				EFI_HANDLE Handle = NULL;
+				SafeFree(Installable.List[Type].Path[Entry]);
 				UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select %a %s",
 					KeyInfo[Type].Name, (Type == DBX) ? L"binary" : L"certificate");
 				Status = SimpleFileSelector(&Handle,
@@ -399,24 +420,29 @@ EFI_STATUS EFIAPI efi_main(
 						L"",
 						Title,
 						NULL
-					}, L"\\", L".cer|.crt|.esl|.bin", &SelPath);
+					}, L"\\", L".cer|.crt|.esl|.bin", &Installable.List[Type].Path[Entry]);
 				if (EFI_ERROR(Status))
 					continue;
-				StrCpyS(Path, ARRAY_SIZE(Path), SelPath);
-				FreePool(SelPath);
+				if (!SimpleFileExistsByPath(gBaseImageHandle, Installable.List[Type].Path[Entry])) {
+					Print(L"No valid file selected for %a[%d] - Ignoring\n", KeyInfo[Type].Name, Entry);
+					continue;
+				}
 			}
 
-			Installable.List[Type].Esl[Entry] = LoadToEsl(Path);
+			Installable.List[Type].Esl[Entry] = LoadToEsl(Installable.List[Type].Path[Entry]);
 
-			if (Installable.List[Type].Esl[Entry] == NULL)
+			if (Installable.List[Type].Esl[Entry] == NULL) {
+				Print(L"Failed to load %a[%d] - Aborting\n", KeyInfo[Type].Name, Entry);
 				goto exit;
+			}
 		}
 	}
 
 	/* 6. Generate a keyless PK cert if none was specified */
 	if (Installable.List[PK].Esl[0] == NULL) {
-		Installable.List[PK].Path[0] = "[GENERATE]";
 		Print(L"Generating PK certificate...\n");
+		SafeFree(Installable.List[PK].Path[0]);
+		Installable.List[PK].Path[0] = StrDup(L"AutoGenerated");
 		Cert = GenerateCredentials("Mosby Generated PK", NULL);
 		Installable.List[PK].Esl[0] = CertToEsl(Cert);
 		if (Installable.List[PK].Esl[0] == NULL) {
@@ -427,9 +453,11 @@ EFI_STATUS EFIAPI efi_main(
 
 	/* 7. Generate DB credentials if requested */
 	for (Entry = 0; Entry < Installable.List[DB].NumEntries &&
-		AsciiStrCmp(Installable.List[DB].Path[Entry], "[GENERATE]") != 0; Entry++);
+		StrCmp(Installable.List[DB].Path[Entry], L"[GENERATE]") != 0; Entry++);
 	if (Entry < Installable.List[DB].NumEntries) {
 		Print(L"Generating Secure Boot signing credentials...\n");
+		SafeFree(Installable.List[DB].Path[Entry]);
+		Installable.List[DB].Path[Entry] = StrDup(L"AutoGenerated");
 		Cert = GenerateCredentials("Secure Boot signing", &Key);;
 		Installable.List[DB].Esl[Entry] = CertToEsl(Cert);
 		if (Installable.List[DB].Esl[Entry] == NULL) {
@@ -445,20 +473,21 @@ EFI_STATUS EFIAPI efi_main(
 	/* 8. Install the cert and DBX variables, making sure that we finish with the PK. */
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
 		for (Entry = 0; Entry < Installable.List[Type].NumEntries; Entry++) {
-			ConvertPath(Installable.List[Type].Path[Entry], Path, ARRAY_SIZE(Path));
-			if (StrCmp(Path, L"[GENERATE]") == 0)
-				StrCpyS(Path, ARRAY_SIZE(Path), L"AutoGenerated");
-			Print(L"Installing %a[%d] (from %s)\n", KeyInfo[Type].Name, Entry, Path);
-			SetStatus = SetSecureBootVariable(Installable.List[Type].Esl[Entry], Type, (Entry != 0));
-			if (EFI_ERROR(SetStatus))
-				Status = SetStatus;
+			if (Installable.List[Type].Esl[Entry] != NULL) {
+				Print(L"Installing %a[%d] (from %s)\n", KeyInfo[Type].Name, Entry, Installable.List[Type].Path[Entry]);
+				SetStatus = SetSecureBootVariable(Installable.List[Type].Esl[Entry], Type, (Entry != 0));
+				if (EFI_ERROR(SetStatus))
+					Status = SetStatus;
+			}
 		}
 	}
 
 exit:
 	for (Type = 0; Type < MAX_TYPES; Type++)
-		for (Entry = 0; Entry < MOSBY_MAX_ENTRIES; Entry++)
+		for (Entry = 0; Entry < MOSBY_MAX_ENTRIES; Entry++) {
+			FreePool(Installable.List[Type].Path[Entry]);
 			FreePool(Installable.List[Type].Esl[Entry]);
+		}
 	FreePool(Installable.ListData);
 	FreePool(Argv);
 	return Status;

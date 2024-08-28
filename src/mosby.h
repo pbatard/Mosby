@@ -57,7 +57,7 @@ enum {
 /* Structure containing the list of "keys" for a specific type */
 typedef struct {
 	UINTN NumEntries;
-	CHAR8 *Path[MOSBY_MAX_ENTRIES];
+	CHAR16 *Path[MOSBY_MAX_ENTRIES];
 	EFI_SIGNATURE_LIST *Esl[MOSBY_MAX_ENTRIES];
 } INSTALLABLE_LIST;
 
