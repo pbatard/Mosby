@@ -28,6 +28,12 @@
 
 #include <Uefi/UefiBaseType.h>
 
+#define MAX_PRINT_LINES   50
+#define MAX_LINE_SIZE     120
+
+STATIC UINTN CurrentLine = 0;
+STATIC CHAR16* PrintLine[MAX_PRINT_LINES] = { 0 };
+
 STATIC __inline INTN CountLines(
 	IN CONST CHAR16 *StrArray[]
 )
@@ -367,4 +373,51 @@ VOID ConsoleReset(VOID)
 	// Set mode 0 - required to be 80x25
 	Console->SetMode(Console, 0);
 	Console->ClearScreen(Console);
+}
+
+/* Set of functions enabling printed data to persist after displaying a dialog */
+UINTN EFIAPI RecallPrint(
+	IN  CONST CHAR16 *FormatString,
+	...
+)
+{
+	// NB: VA_LIST requires the function call to be EFIAPI decorated
+	VA_LIST Marker;
+	UINTN Ret;
+
+	if (CurrentLine >= MAX_PRINT_LINES)
+		return 0;
+
+	PrintLine[CurrentLine] = AllocateZeroPool(MAX_LINE_SIZE * sizeof(CHAR16));
+	if (PrintLine[CurrentLine] == NULL)
+		return 0;
+
+	VA_START(Marker, FormatString);
+	Ret = UnicodeVSPrint(PrintLine[CurrentLine], MAX_LINE_SIZE * sizeof(CHAR16), FormatString, Marker);
+	VA_END(Marker);
+	// If we truncate a line with that ends with an LF, make sure we keep the LF
+	if (FormatString[StrLen(FormatString) - 1] == L'\n')
+		PrintLine[CurrentLine][MAX_LINE_SIZE - 2] = L'\n';
+	Print(L"%s", PrintLine[CurrentLine++]);
+	return Ret;
+}
+
+VOID RecallPrintRestore(VOID)
+{
+	UINTN i;
+
+	ConsoleReset();
+	for (i = 0; i < CurrentLine; i++)
+		Print(L"%s", PrintLine[i]);
+}
+
+VOID RecallPrintFree(VOID)
+{
+	UINTN i;
+
+	for (i = 0; i < MAX_PRINT_LINES; i++) {
+		FreePool(PrintLine[i]);
+		PrintLine[i] = NULL;
+	}
+	CurrentLine = 0;
 }

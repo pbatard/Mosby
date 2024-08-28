@@ -33,8 +33,6 @@
 #include <Guid/FileSystemVolumeLabelInfo.h>
 #include <Protocol/LoadedImage.h>
 
-#define FileReportErrorAndExit(...) do { Print(__VA_ARGS__); goto exit; } while(0)
-
 STATIC EFI_STATUS GeneratePath(
 	IN CONST CHAR16* Name,
 	IN CONST EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
@@ -71,7 +69,7 @@ STATIC EFI_STATUS GeneratePath(
 
 	if (*PathName == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
-		FileReportErrorAndExit(L"Failed to allocate path buffer\n");
+		ReportErrorAndExit(L"Failed to allocate path buffer\n");
 	}
 
 	StrCpyS(*PathName, PathLen, DevicePathString);
@@ -102,12 +100,12 @@ EFI_STATUS SimpleFileOpenByHandle(
 	Status = gBS->HandleProtocol(DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&Drive);
 
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to locate simple filesystem protocol: %r\n", Status);
+		ReportErrorAndExit(L"Failed to locate simple filesystem protocol: %r\n", Status);
 
 	Status = Drive->OpenVolume(Drive, &Root);
 
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to open drive volume: %r\n", Status);
+		ReportErrorAndExit(L"Failed to open drive volume: %r\n", Status);
 
 	Status = Root->Open(Root, File, (CHAR16*)Name, Mode, 0);
 
@@ -136,7 +134,7 @@ EFI_STATUS SimpleFileOpen(
 	Status = GeneratePath(Name, LoadedImage, &LoadPath, &PathName);
 
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to generate load path for %s: %r\n", Name, Status);
+		ReportErrorAndExit(L"Failed to generate load path for %s: %r\n", Name, Status);
 
 	Device = LoadedImage->DeviceHandle;
 
@@ -172,10 +170,10 @@ EFI_STATUS SimpleDirReadAllByHandle(
 	Size = sizeof(Buffer);
 	Status = File->GetInfo(File, &gEfiFileInfoGuid, &Size, Info);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to get file info: %r\n", Status);
+		ReportErrorAndExit(L"Failed to get file info: %r\n", Status);
 	if ((Info->Attribute & EFI_FILE_DIRECTORY) == 0) {
 		Status = EFI_INVALID_PARAMETER;
-		FileReportErrorAndExit(L"Not a directory: '%s'\n", Name);
+		ReportErrorAndExit(L"Not a directory: '%s'\n", Name);
 	}
 	Size = 0;
 	*Count = 0;
@@ -222,7 +220,7 @@ EFI_STATUS SimpleDirReadAll(
 
 	Status = SimpleFileOpen(Image, Name, &File, EFI_FILE_MODE_READ);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to open '%s': %r\n", Name, Status);
+		ReportErrorAndExit(L"Failed to open '%s': %r\n", Name, Status);
 
 	Status = SimpleDirReadAllByHandle(File, Name, Entries, Count);
 exit:
@@ -244,13 +242,13 @@ EFI_STATUS SimpleFileReadAll(
 
 	Status = File->GetInfo(File, &gEfiFileInfoGuid, Size, Info);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to get file info: %r\n", Status);
+		ReportErrorAndExit(L"Failed to get file info: %r\n", Status);
 
 	*Size = Info->FileSize;
 
 	if (*Size > MAX_FILE_SIZE) {
 		Status = EFI_UNSUPPORTED;
-		FileReportErrorAndExit(L"File size %d is too large\n", *Size);
+		ReportErrorAndExit(L"File size %d is too large\n", *Size);
 	}
 
 	// Might use memory mapped, so align up to nearest page.
@@ -258,7 +256,7 @@ EFI_STATUS SimpleFileReadAll(
 	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size + 1, 4096));
 	if (*Buffer == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
-		FileReportErrorAndExit(L"Failed to allocate buffer of size %d\n", *Size);
+		ReportErrorAndExit(L"Failed to allocate buffer of size %d\n", *Size);
 	}
 	Status = File->Read(File, Size, *Buffer);
 
@@ -295,7 +293,7 @@ EFI_STATUS SimpleVolumeSelector(
 	Entries = AllocateZeroPool(sizeof(CHAR16 *) * (Count + 1));
 	if (Entries == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
-		FileReportErrorAndExit(L"Failed to allocate volume selector buffer\n");
+		ReportErrorAndExit(L"Failed to allocate volume selector buffer\n");
 	}
 
 	for (i = 0; i < Count; i++) {
@@ -328,7 +326,7 @@ EFI_STATUS SimpleVolumeSelector(
 			Name = ConvertDevicePathToText(DevicePathFromHandle(VolumeHandles[i]), FALSE, FALSE);
 			if (Name == NULL) {
 				Status = EFI_OUT_OF_RESOURCES;
-				FileReportErrorAndExit(L"Failed to convert device path\n");
+				ReportErrorAndExit(L"Failed to convert device path\n");
 			}
 		}
 
@@ -383,7 +381,7 @@ EFI_STATUS SimpleDirFilter(
 
 	if (NewFilter == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
-		FileReportErrorAndExit(L"Failed to allocate filter buffer\n");
+		ReportErrorAndExit(L"Failed to allocate filter buffer\n");
 	}
 
 	// Just in case EFI ever stops writeable strings
@@ -434,7 +432,7 @@ EFI_STATUS SimpleDirFilter(
 		*Result = AllocateZeroPool(2 * sizeof(VOID *));
 	if (*Result == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
-		FileReportErrorAndExit(L"Failed to allocate filter result buffer\n");
+		ReportErrorAndExit(L"Failed to allocate filter result buffer\n");
 	}
 
 	*Count = 0;
@@ -663,10 +661,10 @@ EFI_STATUS SimpleFileReadAllByPath(
 	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
 		PathStart, &File, EFI_FILE_MODE_READ);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to open '%s': %r\n", Path, Status);
+		ReportErrorAndExit(L"Failed to open '%s': %r\n", Path, Status);
 	Status = SimpleFileReadAll(File, Size, Buffer);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to read '%s': %r\n", Path, Status);
+		ReportErrorAndExit(L"Failed to read '%s': %r\n", Path, Status);
 
 exit:
 	SimpleFileClose(File);
@@ -689,10 +687,10 @@ EFI_STATUS SimpleFileWriteAllByPath(
 	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
 		PathStart, &File, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to create '%s': %r\n", Path, Status);
+		ReportErrorAndExit(L"Failed to create '%s': %r\n", Path, Status);
 	Status = SimpleFileWriteAll(File, Size, Buffer);
 	if (EFI_ERROR(Status))
-		FileReportErrorAndExit(L"Failed to write '%s': %r", Path, Status);
+		ReportErrorAndExit(L"Failed to write '%s': %r", Path, Status);
 exit:
 	SimpleFileClose(File);
 	return Status;

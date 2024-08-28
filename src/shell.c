@@ -17,6 +17,7 @@
  */
 
 #include "shell.h"
+#include "console.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -42,7 +43,7 @@ EFI_STATUS ArgSplit(
 
 	Status = gBS->HandleProtocol(Image,  &gEfiLoadedImageProtocolGuid, (VOID **)&LoadedImage);
 	if (EFI_ERROR(Status)) {
-		Print(L"Failed to get arguments\n");
+		RecallPrint(L"Failed to get arguments\n");
 		return Status;
 	}
 

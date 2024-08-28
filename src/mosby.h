@@ -70,6 +70,3 @@ typedef struct {
 
 /* FreePool() replacement, that NULLs the freed pointer. */
 #define SafeFree(p)  do { FreePool(p); p = NULL; } while(0)
-
-/* Error reporting macro */
-#define ReportErrorAndExit(...) do { Print(__VA_ARGS__); goto exit; } while(0)

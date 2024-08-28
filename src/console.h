@@ -23,6 +23,9 @@
 
 #define NOSEL 0x7fffffff
 
+/* Error reporting macro */
+#define ReportErrorAndExit(...) do { RecallPrint(__VA_ARGS__); goto exit; } while(0)
+
 EFI_INPUT_KEY ConsoleGetKeystroke(VOID);
 
 INTN ConsoleCheckForKeystroke(
@@ -73,3 +76,12 @@ VOID ConsoleError(
 );
 
 VOID ConsoleReset(VOID);
+
+UINTN EFIAPI RecallPrint(
+	IN  CONST CHAR16 *FormatString,
+	...
+);
+
+VOID RecallPrintRestore(VOID);
+
+VOID RecallPrintFree(VOID);
