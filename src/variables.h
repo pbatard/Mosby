@@ -1,6 +1,6 @@
 /*
- * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
- * Copyright 2024 Pete Batard <pete@akeo.ie>
+ * MSSB (More Secure Secure Boot -- "Mosby") Secure Boot variables handling
+ * Copyright © 2024 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,30 +16,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-#include <Base.h>
-#include <Uefi.h>
-
-EFI_STATUS InitializePki(
+EFI_STATUS CheckSetupMode(
 	IN CONST BOOLEAN TestMode
 );
 
-VOID* GenerateCredentials(
-	IN CONST CHAR8 *CertName,
-	OUT VOID **GeneratedKey
-);
-
-EFI_STATUS SaveCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key,
-	IN CONST CHAR16 *BaseName
-);
-
-EFI_SIGNATURE_LIST* CertToEsl(
-	CONST IN VOID *Cert
-);
-
-EFI_SIGNATURE_LIST* LoadToEsl(
-	IN CONST CHAR16 *Path
+EFI_STATUS SetSecureBootVariable(
+	IN CONST CHAR16 *VariableName,
+	IN CONST EFI_GUID *VendorGuid,
+	IN CONST EFI_SIGNATURE_LIST *Esl,
+	IN CONST BOOLEAN Append
 );

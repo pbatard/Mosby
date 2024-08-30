@@ -22,6 +22,7 @@
 #include "pki.h"
 #include "shell.h"
 #include "utf8.h"
+#include "variables.h"
 #include "version.h"
 
 /* Globals */
@@ -213,51 +214,6 @@ exit:
 	return Status;
 }
 
-// We can't use EnrollFromInput() since it doesn't support Appending.
-STATIC EFI_STATUS SetSecureBootVariable(
-	EFI_SIGNATURE_LIST *Esl,
-	UINTN Type,
-	BOOLEAN Append
-)
-{
-	// TODO: MOK may need different options
-	CONST UINT32 VarAttributes = EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_RUNTIME_ACCESS |
-		EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
-	EFI_STATUS Status;
-	EFI_TIME Time = { 0 };
-	UINT8 *VarData;
-	UINTN VarSize;
-
-	Status = gRT->GetTime(&Time, NULL);
-	if (EFI_ERROR(Status)) {
-		RecallPrint(L"Failed to get current time: %r\n", Status);
-		return Status;
-	}
-
-	// SetVariable() *will* fail with "Security Violation" unless you
-	// explicitly zero these before calling CreateTimeBasedPayload()
-	Time.Nanosecond = 0;
-	Time.TimeZone = 0;
-	Time.Daylight = 0;
-
-	VarData = (UINT8*)Esl;
-	VarSize = Esl->SignatureListSize;
-	// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
-	Status = CreateTimeBasedPayload(&VarSize, &VarData, &Time);
-	if (EFI_ERROR(Status)) {
-		SafeFree(Esl);
-		RecallPrint(L"Failed to create time-based data payload: %r\n", Status);
-		return Status;
-	}
-
-	Status = gRT->SetVariable(KeyInfo[Type].VarName, KeyInfo[Type].VarGuid,
-			VarAttributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0), VarSize, VarData);
-	SafeFree(VarData);
-	if (EFI_ERROR(Status))
-		RecallPrint(L"Failed to set Secure Boot variable: %r\n", Status);
-
-	return EFI_SUCCESS;
-}
 
 /*
  * Application entry-point
@@ -269,9 +225,7 @@ EFI_STATUS EFIAPI efi_main(
 {
 	BOOLEAN TestMode = FALSE;
 	EFI_STATUS Status, SetStatus;
-	UINT8 SecureBoot = 0, SetupMode = 0;
-	UINTN Size;
-	INTN Argc, Type, Entry;
+	INTN Argc, Type, Entry, Sel;
 	VOID *Cert, *Key;
 	CHAR16 **Argv = NULL, **ArgvCopy, Path[MAX_PATH];
 	INSTALLABLE_COLLECTION Installable = { 0 };
@@ -302,50 +256,34 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
-	/* 1. Verify that the platform is in Setup Mode */
-	if (!TestMode) {
-		Size = sizeof(SecureBoot);
-		Status = gRT->GetVariable(EFI_SECURE_BOOT_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SecureBoot);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"This platform does not support Secure Boot.\n");
-		Size = sizeof(SetupMode);
-		Status = gRT->GetVariable(EFI_SETUP_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
-		if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE) {
-			Status = EFI_UNSUPPORTED;
-			ReportErrorAndExit(L"ERROR: This platform is not in Setup Mode.\n");
-			// TODO: More explanatory error message and possibly automate switch to Setup?
-		}
-	}
-
-	/* 2. Initialize the random generator and validate the platform */
-	Status = InitializePki();
+	/* 1. Initialize the random generator and validate the platform */
+	Status = InitializePki(TestMode);
 	if (EFI_ERROR(Status))
-		ReportErrorAndExit(L"This platform does not meet the minimum security requirements.\n");
+		ReportErrorAndExit(L"ERROR: This platform does not meet the minimum security requirements.\n");
+
+	/* 2. Verify that the platform is in Setup Mode */
+	Status = CheckSetupMode(TestMode);
+	if (EFI_ERROR(Status))
+		goto exit;
 
 	/* 3. Parse and validate the list file */
 	Status = ParseList(MOSBY_LIST_NAME, &Installable);
 	if (EFI_ERROR(Status))
 		goto exit;
 	if (Installable.List[PK].NumEntries > 1) {
-		ConsoleAlertBox(
-			(CONST CHAR16 *[]){
-				L"WARNING",
-				L"",
-				L"More than one PK was specified in the list file.",
-				L"Only the first one will be used.",
-				NULL
-			});
-		RecallPrintRestore();
+		RecallPrint(L"WARNING: More than one PK was specified. Only the first will be used.");
 		Installable.List[PK].NumEntries = 1;
 	};
 
 	/* 4. Prompt the user about the changes we are going to make */
 	if (!gOptionSilent) {
-		INTN Sel = ConsoleOkCancel(
+		Sel = ConsoleOkCancel(
 			(CONST CHAR16 *[]){
-				L"This application will update your Secure Boot entries using the latest",
-				L"database and OS provider data, as well as set a UNIQUE system-specific",
-				L"root certificate, that is not under the control of any third-party.",
+				L"NOTICE",
+				L"",
+				L"This application will update your Secure Boot entries using the latest    ",
+				L"database and OS provider data, as well as set a UNIQUE system-specific    ",
+				L"root certificate, that is not under the control of third-parties.         ",
 				L"",
 				L"It will also allow you to create/install your own Secure Boot signing key.",
 				L"",
@@ -380,17 +318,17 @@ EFI_STATUS EFIAPI efi_main(
 			}
 
 			if (Type == DB && StrCmp(Installable.List[Type].Path[Entry], L"[PROMPT]") == 0) {
-				INTN Sel = ConsoleSelect(
+				Sel = ConsoleSelect(
 					(CONST CHAR16 *[]){
 						L"DB credentials installation",
 						L"",
-						L"Do you want to SELECT an existing Secure Boot signing certificate",
-						L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
-						L"any certificate for your own usage)?",
+						L"Do you want to SELECT an existing Secure Boot signing certificate  ",
+						L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL  ",
+						L"any certificate for your own usage)?                               ",
 						L"",
-						L"If you don't know what to pick, we recommend to GENERATE new signing",
-						L"credentials, so that you will be able to sign your own Secure Boot",
-						L"binaries for this system.",
+						L"If you don't know what to use, we recommend to GENERATE new signing",
+						L"credentials, so that you will be able to sign your own Secure Boot ",
+						L"binaries for this system.                                          ",
 						NULL
 					},
 					(CONST CHAR16 *[]){
@@ -475,11 +413,15 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* 8. Install the cert and DBX variables, making sure that we finish with the PK. */
+	// Since We have a DeleteSecureBootVariables(), we might as well call it.
+	DeleteSecureBootVariables();
+	Status = EFI_NOT_FOUND;
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
 		for (Entry = 0; Entry < Installable.List[Type].NumEntries; Entry++) {
 			if (Installable.List[Type].Esl[Entry] != NULL) {
 				RecallPrint(L"Installing %a[%d] (from %s)\n", KeyInfo[Type].Name, Entry, Installable.List[Type].Path[Entry]);
-				SetStatus = SetSecureBootVariable(Installable.List[Type].Esl[Entry], Type, (Entry != 0));
+				SetStatus = SetSecureBootVariable(KeyInfo[Type].VarName, KeyInfo[Type].VarGuid,
+					Installable.List[Type].Esl[Entry], (Entry != 0));
 				if (EFI_ERROR(SetStatus))
 					Status = SetStatus;
 			}

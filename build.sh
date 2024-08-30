@@ -17,4 +17,11 @@ else
   # EDK2's OpenSSL implementation requires IvyBridge or later to function for RDRAND
   CPU_OPT="-cpu IvyBridge"
 fi
-export QEMU_CMD="qemu-system-x86_64 $CPU_OPT -m 1024 -M q35 -L . -drive if=pflash,format=raw,unit=0,file=OVMF.fd,readonly=on -drive format=raw,file=fat:rw:image -nodefaults -nographic -serial stdio -net none"
+# DISABLED = SecureBoot=0, SetupMode=0
+# SETUP = SecureBoot=0, SetupMode=1
+SB_MODE=DISABLED
+cp OVMF_VARS_4M.secboot.$SB_MODE.fd OVMF_VARS_4M.secboot.fd
+export QEMU_CMD="qemu-system-x86_64 $CPU_OPT -m 1024 -M q35 -L . \
+  -drive if=pflash,format=raw,unit=0,file=OVMF_CODE_4M.secboot.fd,readonly=on \
+  -drive if=pflash,format=raw,unit=1,file=OVMF_VARS_4M.secboot.fd \
+  -drive format=raw,file=fat:rw:image -nodefaults -nographic -serial stdio -net none"

@@ -25,6 +25,7 @@
   src/pki.c
   src/shell.c
   src/utf8.c
+  src/variables.c
 
 [Packages]
   MosbyPkg.dec
@@ -56,17 +57,15 @@
   gEfiCertX509Sha256Guid
   gEfiCertX509Sha384Guid
   gEfiCertX509Sha512Guid
-  gEfiFileInfoGuid
-  gEfiFileSystemInfoGuid
   gEfiGlobalVariableGuid
   gEfiImageSecurityDatabaseGuid
-  gEfiSmbiosTableGuid
-  gEfiSmbios3TableGuid
+  gEfiFileInfoGuid
+  gEfiFileSystemInfoGuid
 
 [Protocols]
   gEfiDiskIoProtocolGuid
   gEfiDiskIo2ProtocolGuid
-  gEfiLoadedImageProtocolGuid 
+  gEfiLoadedImageProtocolGuid
   gEfiSimpleFileSystemProtocolGuid
   gEfiUnicodeCollationProtocolGuid
   gEfiUnicodeCollation2ProtocolGuid

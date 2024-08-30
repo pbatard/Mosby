@@ -312,7 +312,7 @@ INTN ConsoleYesNo(
 	IN CONST CHAR16 *StrArray[]
 )
 {
-	return ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"No", L"Yes", NULL }, 0);
+	return ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"Yes", L"No", NULL }, 0);
 }
 
 INTN ConsoleOkCancel(
@@ -375,7 +375,7 @@ VOID ConsoleReset(VOID)
 	Console->ClearScreen(Console);
 }
 
-/* Set of functions enabling printed data to persist after displaying a dialog */
+/* Set of functions enabling printed data to persist on screen after displaying a dialog */
 UINTN EFIAPI RecallPrint(
 	IN  CONST CHAR16 *FormatString,
 	...

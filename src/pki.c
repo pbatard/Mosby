@@ -59,7 +59,9 @@ STATIC int OpenSSLErrorCallback(
 	return 0;
 }
 
-EFI_STATUS InitializePki(VOID)
+EFI_STATUS InitializePki(
+	IN CONST BOOLEAN TestMode
+)
 {
 	CONST CHAR8 DefaultSeed[] = "Mosby crypto default seed";
 	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
@@ -79,7 +81,7 @@ EFI_STATUS InitializePki(VOID)
 		RAND_seed(DefaultSeed, sizeof(DefaultSeed));
 	}
 	FreePool(Seed);
-	return (RAND_status() != 1) ? EFI_UNSUPPORTED : EFI_SUCCESS;
+	return (RAND_status() != 1 && !TestMode) ? EFI_UNSUPPORTED : EFI_SUCCESS;
 }
 
 /* Helper function to add X509 extensions */

@@ -21,14 +21,16 @@
 #include <Base.h>
 #include <Uefi.h>
 
-#include <Uefi/UefiBaseType.h>
 #include <Guid/ImageAuthentication.h>
+#include <Guid/AuthenticatedVariableFormat.h>
+#include <Uefi/UefiBaseType.h>
 #include <UefiSecureBoot.h>
 #include <Library/BaseLib.h>
 #include <Library/BaseCryptLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include <Library/PlatformPKProtectionLib.h>
 #include <Library/PrintLib.h>
 #include <Library/SecureBootVariableLib.h>
 #include <Library/TimeBaseLib.h>
