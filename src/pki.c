@@ -48,6 +48,8 @@
 	ERR_print_errors_cb(OpenSSLErrorCallback, _ErrMsg); goto exit;  \
 	} while(0)
 
+STATIC EFI_TIME mTime = { 0 };
+
 /* For OpenSSL error reporting */
 STATIC int OpenSSLErrorCallback(
 	CONST CHAR8 *AsciiString,
@@ -66,6 +68,17 @@ EFI_STATUS InitializePki(
 	CONST CHAR8 DefaultSeed[] = "Mosby crypto default seed";
 	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
 	CHAR16 *Seed = NULL;
+	EFI_STATUS Status;
+
+	Status = gRT->GetTime(&mTime, NULL);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Failed to get current time: %r\n", Status);
+
+	// SetVariable() *will* fail with "Security Violation" unless you
+	// explicitly zero these before calling CreateTimeBasedPayload()
+	mTime.Nanosecond = 0;
+	mTime.TimeZone = 0;
+	mTime.Daylight = 0;
 
 	// Try to use the loaded image's DevicePath (of the DeviceHandle) as our seed since
 	// it is both unique enough and *not* time-based (therefore harder to guess).
@@ -81,7 +94,10 @@ EFI_STATUS InitializePki(
 		RAND_seed(DefaultSeed, sizeof(DefaultSeed));
 	}
 	FreePool(Seed);
-	return (RAND_status() != 1 && !TestMode) ? EFI_UNSUPPORTED : EFI_SUCCESS;
+	Status = (RAND_status() != 1 && !TestMode) ? EFI_UNSUPPORTED : EFI_SUCCESS;
+
+exit:
+	return Status;
 }
 
 /* Helper function to add X509 extensions */
@@ -268,13 +284,21 @@ EFI_STATUS SaveCredentials(
 
 #if 0
 	// Save certificate as DER encoded .cer
+	Size = (INTN)i2d_X509(Cert, NULL);
+	if (Size <= 0)
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	Buffer = AllocateZeroPool(Size);
+	if (Buffer == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
+		ReportErrorAndExit(L"Failed to allocate DER buffer\n");
+	}
 	Ptr = Buffer;	// i2d_###() modifies the pointer
-	Size = (INTN)i2d_X509((X509*)Cert, &Ptr);
+	Size = (INTN)i2d_X509(Cert, &Ptr);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.cer", BaseName);
 	Status = SimpleFileWriteAllByPath(gBaseImageHandle, Path, (UINTN)Size, Buffer);
-	OPENSSL_free(Buffer);
+	SafeFree(Buffer);
 	if (EFI_ERROR(Status))
 		goto exit;
 #endif
@@ -300,50 +324,41 @@ exit:
 	return Status;
 }
 
-EFI_SIGNATURE_LIST* CertToEsl(
-	CONST IN VOID *Cert
+VOID FreeCredentials(
+	IN CONST VOID *Cert,
+	IN CONST VOID *Key
 )
 {
+	X509_free((X509*)Cert);
+	EVP_PKEY_free((EVP_PKEY*)Key);
+}
+
+EFI_STATUS CertToAuthVar(
+	CONST IN VOID *Cert,
+	OUT AUTHENTICATED_VARIABLE *Variable
+)
+{
+	EFI_STATUS Status = EFI_INVALID_PARAMETER;
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	EFI_SIGNATURE_DATA *Data = NULL;
 	INTN Size;
 	UINT8 *Ptr;
-	EFI_GUID OwnerGuid, *TypeGuid = NULL;
+	EFI_GUID OwnerGuid;
 	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
 
-	if (Cert == NULL)
-		return NULL;
+	if (Cert == NULL || Variable == NULL)
+		return EFI_INVALID_PARAMETER;
 
 	Size = (INTN)i2d_X509((X509*)Cert, NULL);
 	if (Size <= 0)
-		return NULL;
+		goto exit;
 	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size);
-	if (Esl == NULL)
+	if (Esl == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
 		ReportErrorAndExit(L"Failed to allocate ESL\n");
-
-	switch (X509_get_signature_nid((X509*)Cert)) {
-		case NID_sha256:
-		case NID_sha256WithRSAEncryption:
-			TypeGuid = &gEfiCertX509Sha256Guid;
-			break;
-		case NID_sha384:
-		case NID_sha384WithRSAEncryption:
-			TypeGuid = &gEfiCertX509Sha384Guid;
-			break;
-		case NID_sha512:
-		case NID_sha512WithRSAEncryption:
-			TypeGuid = &gEfiCertX509Sha512Guid;
-			break;
-		default:
-			break;
 	}
 
-	if (TypeGuid == NULL) {
-		FreePool(Esl);
-		ReportErrorAndExit(L"Unsupported signature algorithm\n");
-	}
-	CopyGuid(&Esl->SignatureType, TypeGuid);
-
+	CopyGuid(&Esl->SignatureType, &gEfiCertX509Guid);
 	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size;
 	Esl->SignatureSize = sizeof(EFI_SIGNATURE_DATA) - 1 + Size;
 
@@ -361,21 +376,38 @@ EFI_SIGNATURE_LIST* CertToEsl(
 	CopyMem(&OwnerGuid.Data4, &Sha1[8], 8);
 	CopyGuid(&Data->SignatureOwner, &OwnerGuid);
 
+	Variable->Size = Esl->SignatureListSize;
+	Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
+	// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
+	Status = CreateTimeBasedPayload(&Variable->Size, (UINT8**)&Variable->Data, &mTime);
+	if (EFI_ERROR(Status)) {
+		FreePool(Esl);
+		ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
+	}
+
 exit:
-	return Esl;
+	if (EFI_ERROR(Status)) {
+		Variable->Size = 0;
+		Variable->Data = NULL;
+	}
+	return Status;
 }
 
-EFI_SIGNATURE_LIST* LoadToEsl(
-	IN CONST CHAR16 *Path
+EFI_STATUS LoadToAuthVar(
+	IN CONST CHAR16 *Path,
+	OUT AUTHENTICATED_VARIABLE* Variable
 )
 {
 	EFI_STATUS Status;
 	UINTN Size, HeaderSize;
 	UINT8 *Buffer = NULL;
 	CONST UINT8 *Ptr;
-	EFI_SIGNATURE_LIST* Esl = NULL;
-	EFI_VARIABLE_AUTHENTICATION_2* SignedEsl = NULL;
+	EFI_SIGNATURE_LIST *Esl = NULL;
+	EFI_VARIABLE_AUTHENTICATION_2 *SignedEsl = NULL;
 	BIO *bio = NULL;
+
+	if (Path == NULL || Variable == NULL)
+		return EFI_INVALID_PARAMETER;
 
 	if (!SimpleFileExistsByPath(gBaseImageHandle, Path))
 		ReportErrorAndExit(L"File '%s' does not exist\n", Path);
@@ -384,10 +416,11 @@ EFI_SIGNATURE_LIST* LoadToEsl(
 	if (EFI_ERROR(Status))
 		goto exit;
 
+	Status = EFI_INVALID_PARAMETER;
 	if (Size < sizeof(EFI_SIGNATURE_LIST))
 		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Path);
 
-	// Check for signed ESL (PKCS#7 only, as it's what DBX updates use)
+	// Check for signed ESL (PKCS#7 only)
 	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Buffer;
 	if (Size > sizeof(EFI_VARIABLE_AUTHENTICATION_2) &&
 		SignedEsl->AuthInfo.Hdr.dwLength < Size &&
@@ -402,44 +435,145 @@ EFI_SIGNATURE_LIST* LoadToEsl(
 		HeaderSize += 4;	// For the 4 extra bytes above
 		if (HeaderSize + sizeof(EFI_SIGNATURE_LIST) > Size)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		Esl = AllocateZeroPool(Size - HeaderSize);
-		if (Esl == NULL)
-			ReportErrorAndExit(L"Failed to allocate unsigned ESL for '%s'\n", Path);
-		CopyMem(Esl, &Buffer[HeaderSize], Size - HeaderSize);
-		SafeFree(Buffer);
-		if (Esl->SignatureListSize != Size - HeaderSize) {
-			SafeFree(Esl);
+		Esl = (EFI_SIGNATURE_LIST*)&Buffer[HeaderSize];
+		if (Esl->SignatureListSize != Size - HeaderSize)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		}
+		Buffer = NULL;	// Don't free our data
+		Variable->Size = Size;
+		Variable->Data = SignedEsl;
+		Status = EFI_SUCCESS;
 		goto exit;
 	}
 
 	// Check for a DER encoded X509 certificate
 	Ptr = Buffer;	// d2i_###() modifies the pointer
-	Esl = CertToEsl(d2i_X509(NULL, &Ptr, Size));
-	if (Esl != NULL)
+	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Size), Variable);
+	if (Status == EFI_SUCCESS)
 		goto exit;
 
 	// Check for a PEM encoded X509 certificate
 	bio = BIO_new_mem_buf(Buffer, Size);
 	if (bio == NULL)
 		ReportErrorAndExit(L"Failed to allocate X509 buffer\n");
-	Esl = CertToEsl(PEM_read_bio_X509(bio, NULL, NULL, NULL));
-	if (Esl != NULL)
+	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), Variable);
+	if (Status == EFI_SUCCESS)
 		goto exit;
 
 	// Check for an unsigned ESL
 	Esl = (EFI_SIGNATURE_LIST*)Buffer;
 	if (Esl->SignatureListSize == Size) {
-		Buffer = NULL;	// Don't free the ESL
-		goto exit;
+		Variable->Size = Esl->SignatureListSize;
+		Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
+		// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
+		Status = CreateTimeBasedPayload(&Variable->Size, (UINT8**)&Variable->Data, &mTime);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
+		Buffer = NULL;	// CreateTimeBasedPayload freed Esl = Buffer already
 	}
 
-	Esl = NULL;
 	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
 
 exit:
 	BIO_free(bio);
 	FreePool(Buffer);
-	return Esl;
+	if (EFI_ERROR(Status)) {
+		Variable->Size = 0;
+		Variable->Data = NULL;
+	}
+	return Status;
+}
+
+EFI_STATUS SignToAuthVar(
+	IN CONST CHAR16 *VariableName,
+	IN CONST EFI_GUID *VendorGuid,
+	IN CONST UINT32 Attributes,
+	IN OUT AUTHENTICATED_VARIABLE *Variable,
+	IN CONST VOID *Cert,
+	IN CONST VOID *Key
+)
+{
+	CONST INTN PAYLOAD = 4;
+	CONST int flags = PKCS7_BINARY | PKCS7_DETACHED | PKCS7_NOATTR;
+	CONST struct {
+		UINT8 *Ptr;
+		UINTN Size;
+	} SignableElement[5] = {
+		{ (UINT8*)VariableName, StrLen(VariableName) * sizeof(CHAR16) },
+		{ (UINT8*)VendorGuid, sizeof(EFI_GUID) },
+		{ (UINT8*)&Attributes, sizeof(Attributes) },
+		{ (UINT8*)&Variable->Data->TimeStamp, sizeof(EFI_TIME) },
+		{ &(((UINT8*)Variable->Data)[OFFSET_OF_AUTHINFO2_CERT_DATA]), Variable->Size - OFFSET_OF_AUTHINFO2_CERT_DATA }
+	};
+	EFI_STATUS Status = EFI_INVALID_PARAMETER;
+	UINT8 *SignData = NULL;
+	EFI_VARIABLE_AUTHENTICATION_2 *SignedVariable = NULL;
+	UINT8 *Payload, *Ptr;
+	UINTN i, SignDataSize, SignatureSize, Offset;
+	BIO *bio;
+	PKCS7 *p7;
+
+	if (Variable->Size < OFFSET_OF_AUTHINFO2_CERT_DATA)
+		ReportErrorAndExit(L"Variable to sign (%d) is too small (%d)\n", Variable->Size, OFFSET_OF_AUTHINFO2_CERT_DATA);
+
+	// We can only sign for PKCS#7
+	if (!CompareGuid(&Variable->Data->AuthInfo.CertType, &gEfiCertPkcs7Guid))
+		ReportErrorAndExit(L"Variable to sign is not PKCS#7\n");
+
+	// Make sure we are dealing with a variable that does NOT already contain a signature
+	if (Variable->Data->AuthInfo.Hdr.dwLength != OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData))
+		ReportErrorAndExit(L"Variable is already signed\n");
+
+	// Construct the data buffer to sign
+	SignDataSize = 0;
+	for (i = 0; i < ARRAY_SIZE(SignableElement); i++)
+		SignDataSize += SignableElement[i].Size;
+	SignData = AllocateZeroPool(SignDataSize);
+	if (SignData == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
+		ReportErrorAndExit(L"Failed to allocate buffer to sign\n");
+	}
+	Offset = 0;
+	for (i = 0; i < ARRAY_SIZE(SignableElement); i++) {
+		CopyMem(&SignData[Offset], SignableElement[i].Ptr, SignableElement[i].Size);
+		Offset += SignableElement[i].Size;
+	}
+
+	// Sign the constructed data buffer
+	bio = BIO_new_mem_buf(SignData, SignDataSize);
+	if (bio == NULL)
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+
+	p7 = PKCS7_sign(NULL, NULL, NULL, bio, flags | PKCS7_PARTIAL);
+	if (p7 == NULL)
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	if (PKCS7_sign_add_signer(p7, (X509*)Cert, (EVP_PKEY*)Key, EVP_get_digestbyname("SHA256"), flags) == NULL)
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	if (!PKCS7_final(p7, bio, flags))
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	SignatureSize = i2d_PKCS7(p7, NULL);
+
+	// Create the signed variable
+	SignedVariable = AllocateZeroPool(Variable->Size + SignatureSize);
+	if (SignedVariable == NULL) {
+		Status = EFI_OUT_OF_RESOURCES;
+		ReportErrorAndExit(L"Failed to allocate buffer for signed variable\n");
+	}
+	CopyMem(SignedVariable, Variable->Data, OFFSET_OF_AUTHINFO2_CERT_DATA);
+	SignedVariable->AuthInfo.Hdr.dwLength = OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData) + SignatureSize;
+	Ptr = SignedVariable->AuthInfo.CertData;
+	SignatureSize = i2d_PKCS7(p7, &Ptr);
+	Payload = (UINT8*)SignedVariable;
+	Payload = &Payload[OFFSET_OF_AUTHINFO2_CERT_DATA + SignatureSize];
+	CopyMem(Payload, SignableElement[PAYLOAD].Ptr, SignableElement[PAYLOAD].Size);
+
+	// Update the variable passed as parameter with the signed one
+	FreePool(Variable->Data);
+	Variable->Data = SignedVariable;
+	Variable->Size = Variable->Size + SignatureSize;
+
+	Status = EFI_SUCCESS;
+
+exit:
+	FreePool(SignData);
+	return Status;
 }

@@ -19,7 +19,7 @@ else
 fi
 # DISABLED = SecureBoot=0, SetupMode=0
 # SETUP = SecureBoot=0, SetupMode=1
-SB_MODE=DISABLED
+SB_MODE=SETUP
 cp OVMF_VARS_4M.secboot.$SB_MODE.fd OVMF_VARS_4M.secboot.fd
 export QEMU_CMD="qemu-system-x86_64 $CPU_OPT -m 1024 -M q35 -L . \
   -drive if=pflash,format=raw,unit=0,file=OVMF_CODE_4M.secboot.fd,readonly=on \

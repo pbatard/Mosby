@@ -19,10 +19,3 @@
 EFI_STATUS CheckSetupMode(
 	IN CONST BOOLEAN TestMode
 );
-
-EFI_STATUS SetSecureBootVariable(
-	IN CONST CHAR16 *VariableName,
-	IN CONST EFI_GUID *VendorGuid,
-	IN CONST EFI_SIGNATURE_LIST *Esl,
-	IN CONST BOOLEAN Append
-);

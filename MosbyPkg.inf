@@ -54,9 +54,7 @@
 
 [Guids]
   gEfiCertPkcs7Guid
-  gEfiCertX509Sha256Guid
-  gEfiCertX509Sha384Guid
-  gEfiCertX509Sha512Guid
+  gEfiCertX509Guid
   gEfiGlobalVariableGuid
   gEfiImageSecurityDatabaseGuid
   gEfiFileInfoGuid

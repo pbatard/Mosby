@@ -25,6 +25,7 @@
 #include <Guid/AuthenticatedVariableFormat.h>
 #include <Uefi/UefiBaseType.h>
 #include <UefiSecureBoot.h>
+#include <Library/AuthVariableLib.h>
 #include <Library/BaseLib.h>
 #include <Library/BaseCryptLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -56,11 +57,16 @@ enum {
 	MAX_TYPES
 };
 
+typedef struct {
+	UINTN Size;
+	EFI_VARIABLE_AUTHENTICATION_2 *Data;
+} AUTHENTICATED_VARIABLE;
+
 /* Structure containing the list of "keys" for a specific type */
 typedef struct {
 	UINTN NumEntries;
 	CHAR16 *Path[MOSBY_MAX_ENTRIES];
-	EFI_SIGNATURE_LIST *Esl[MOSBY_MAX_ENTRIES];
+	AUTHENTICATED_VARIABLE Variable[MOSBY_MAX_ENTRIES];
 } INSTALLABLE_LIST;
 
 /* Structure containing the collection of all the lists */
