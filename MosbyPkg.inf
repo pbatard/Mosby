@@ -23,6 +23,7 @@
   src/file.c
   src/mosby.c
   src/pki.c
+  src/random.c
   src/shell.c
   src/utf8.c
   src/variables.c
@@ -61,12 +62,9 @@
   gEfiFileSystemInfoGuid
 
 [Protocols]
-  gEfiDiskIoProtocolGuid
-  gEfiDiskIo2ProtocolGuid
   gEfiLoadedImageProtocolGuid
   gEfiSimpleFileSystemProtocolGuid
-  gEfiUnicodeCollationProtocolGuid
-  gEfiUnicodeCollation2ProtocolGuid
+  gEfiRngProtocolGuid
 
 [Pcd]
   gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultLang

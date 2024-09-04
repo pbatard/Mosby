@@ -55,7 +55,7 @@ jobs:
     - name: Create version.h file
       run: |
         git update-index --skip-worktree src/version.h
-        echo '#define VERSION_STRING L"${{steps.set_version.outputs.version}}"' > src/version.h
+        echo '#define VERSION_STRING "${{steps.set_version.outputs.version}}"' > src/version.h
 
     - name: Set up Linux environment
       run: |

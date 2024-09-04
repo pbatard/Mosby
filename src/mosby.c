@@ -234,7 +234,7 @@ EFI_STATUS EFIAPI efi_main(
 	INSTALLABLE_COLLECTION Installable = { 0 };
 
 	ConsoleReset();
-	RecallPrint(L"Mosby %s\n", VERSION_STRING);
+	RecallPrint(L"Mosby %a\n", VERSION_STRING);
 	gBaseImageHandle = BaseImageHandle;
 
 	/* 0. Parse arguments */

@@ -20,15 +20,16 @@
 #include "console.h"
 #include "file.h"
 #include "pki.h"
+#include "random.h"
 
 #include <Guid/ImageAuthentication.h>
 #include <Guid/WinCertificate.h>
+
 #include <Protocol/LoadedImage.h>
 
 /* OpenSSL */
 #undef _WIN32
 #undef _WIN64
-#define OPENSSL_NO_DEPRECATED 0
 #include <openssl/asn1.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -44,7 +45,7 @@
 
 #define ReportOpenSSLErrorAndExit(Error) do { CHAR16 _ErrMsg[128];  \
 	UnicodeSPrint(_ErrMsg, ARRAY_SIZE(_ErrMsg), L"%a:%d ",          \
-		__FILE__, __LINE__); Status = Error;                    \
+		__FILE__, __LINE__); Status = Error;                        \
 	ERR_print_errors_cb(OpenSSLErrorCallback, _ErrMsg); goto exit;  \
 	} while(0)
 
@@ -65,10 +66,11 @@ EFI_STATUS InitializePki(
 	IN CONST BOOLEAN TestMode
 )
 {
-	CONST CHAR8 DefaultSeed[] = "Mosby crypto default seed";
+	CONST CHAR8 DefaultSeed[] = __DATE__ __TIME__;
 	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
 	CHAR16 *Seed = NULL;
 	EFI_STATUS Status;
+	OSSL_PROVIDER *prov;
 
 	Status = gRT->GetTime(&mTime, NULL);
 	if (EFI_ERROR(Status))
@@ -79,6 +81,15 @@ EFI_STATUS InitializePki(
 	mTime.Nanosecond = 0;
 	mTime.TimeZone = 0;
 	mTime.Daylight = 0;
+
+	// See if the default RNG works. If not try to use the UEFI platform's RNG.
+	if (!RAND_status()) {
+		prov = uefi_rand_init(NULL, TestMode);
+		if (prov == NULL || !RAND_status()) {
+			Status = EFI_UNSUPPORTED;
+			ReportErrorAndExit(L"Failed to access a random number generator\n");
+		}
+	}
 
 	// Try to use the loaded image's DevicePath (of the DeviceHandle) as our seed since
 	// it is both unique enough and *not* time-based (therefore harder to guess).
@@ -94,7 +105,7 @@ EFI_STATUS InitializePki(
 		RAND_seed(DefaultSeed, sizeof(DefaultSeed));
 	}
 	FreePool(Seed);
-	Status = (RAND_status() != 1 && !TestMode) ? EFI_UNSUPPORTED : EFI_SUCCESS;
+	Status = RAND_status() ? EFI_SUCCESS : EFI_UNSUPPORTED;
 
 exit:
 	return Status;
