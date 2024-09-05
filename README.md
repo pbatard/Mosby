@@ -76,11 +76,26 @@ And it does so by making incredibly **easy** to install your own set of Secure B
 
 ## Usage
 
-[TODO]
+1. Create a UEFI Shell bootable media. If you don't have such a media, you can *easily*
+   create one on Windows through [Rufus](https://rufus.ie) by using the SELECT/DOWNLOAD split
+   button and then choosing "UEFI Shell" in the download selection:
+   https://raw.githubusercontent.com/wiki/pbatard/rufus/images/download.gif
 
-## MosbyList.txt format
+2. Extract all the content from the latest Mosby download archive at the top level of the
+   boot media you created in the previous step. Especially, make sure that `MosbyList.txt`
+   exists along with the various `.efi` and `.nsh` files and that all the binaries referenced
+   in `MosbyList.txt` can be found in their respective location.
 
-[TODO]
+3. Boot the computer where you want to install the keys into the UEFI firmware settings and
+   make sure that your platform is in *Setup Mode*. Please refer to your manufacturer's
+   documentation if you don't know how to enable *Setup Mode*.
+
+4. Boot into the UEFI Shell media you created and type `Mosby` (without any extension). The
+   executable relevant to your platform will automatically launch and will guide you through
+   the installation of the UEFI Secure Boot keys.
+
+5. Once the installation is complete, reboot into UEFI firmware settings, and make sure that
+   Secure Boot is enabled.
 
 ## Support file download
 
@@ -105,15 +120,52 @@ provided in the release archive.
 
 ## Compilation
 
-[TODO]
+Because Mosby depends on OpenSSL to provide the various cryptography function it needs, and
+OpenSSL is integrated by default into [EDK2](https://github.com/tianocore/edk2), only EDK2 is
+supported for compilation.
+
+Additionally, some very limited patching of EDK2 is required to enable some of the standard
+OpenSSL providers, that take care of the importing/exporting of keys and certificates, and
+that are not currently enabled by EDK2.
+So you should first apply `Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch` to
+the EDK2 submodule.
+
+If compiling for ARM or RISCV-64 some additional patching of OpenSSL is required, that can be
+found in `OpenSSL-submodule-fixes-for-<PLATFORM>-compilation.patch`.
+
+Once that is done, you can compile Mosby as you would any regular EDK2 module, by issuing
+something like:
+
+```
+cd <directory where you cloned Mosby>
+git submodule update --init
+export WORKSPACE=$PWD
+export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
+source edk2/edksetup.sh
+build -a X64 -b RELEASE -t GCC5 -p MosbyPkg.dsc
+```
 
 ## Mini FAQ
+
+### ERROR: This platform does not meet the minimum security requirements
+
+If you are getting the error above, it usually means that your system is lacking a proper
+random number generator, which is essential for the generation of a Secure Boot signing key
+that can't be easily cracked by an attacker.
+
+Mosby first attempts to use the OpenSSL provided random number generator or, if that is not
+available, it falls back to using the UEFI platform's random number generator both of which
+are considered safe for the generation of signing keys.
+
+If none of the above are available, then Mosby can also use its own internal random number
+generator, however because of the algorithm being used, this generator should be considered
+**unsafe** and therefore can only be used when running Mosby with the "test" (`-t`) option.
 
 ### How do I use the generated Secure Boot key to sign a UEFI bootloader?
 
 * On Windows, use `signtool.exe` with the `.pfx`. For example, to sign `bootx64.efi`:
 ```
-signtool sign /f "Mosby Secure Boot Signing.pfx" /fd SHA256 bootx64.efi
+signtool sign /f MosbyKey.pfx" /fd SHA256 bootx64.efi
 ```
 
 Note that you can download `signtool.exe` with the command:
@@ -125,7 +177,7 @@ curl.exe -L -A "Microsoft-Symbol-Server/10.0.0.0" https://msdl.microsoft.com/dow
   For example, to sign `bootx64.efi`:
 
 ```
-sbsign --key "Mosby Secure Boot Signing.pem" --cert "Mosby Secure Boot Signing.crt" bootx64.efi --output bootx64.efi
+sbsign --key MosbyKey.pem --cert MosbyKey.crt bootx64.efi --output bootx64.efi
 ```
 
 If asked for a passphrase, just press <kbd>Enter</kbd>.

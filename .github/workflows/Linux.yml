@@ -67,8 +67,9 @@ jobs:
         # We must patch EDK2's OpenSSL module to be able to import/export certificates and keys
         patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
         # And we must patch OpenSSL itself to fix ARM and RISCV64 compilation
-        patch -d edk2/CryptoPkg/Library/OpensslLib/openssl -p1 -i ../../../../../OpenSSL-submodule-fixes-for-ARM-compilation.patch
-        patch -d edk2/CryptoPkg/Library/OpensslLib/openssl -p1 -i ../../../../../OpenSSL-submodule-fixes-for-RISCV64-compilation.patch
+        if [ -f OpenSSL-submodule-fixes-for-${{ matrix.TARGET_ARCH }}-compilation.patch ]; then
+          patch -d edk2/CryptoPkg/Library/OpensslLib/openssl -p1 -i ../../../../../OpenSSL-submodule-fixes-for-${{ matrix.TARGET_ARCH }}-compilation.patch
+        fi
         make -C edk2/BaseTools
 
     - name: Build UEFI application
@@ -121,7 +122,7 @@ jobs:
         curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
 
     - name: Create release archive
-      run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./image/MosbyList.txt certs/ dbx/ ./*/*.efi
+      run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./image/MosbyList.txt ./image/Mosby.nsh certs/ dbx/ ./*/*.efi
 
     - name: Create release
       uses: softprops/action-gh-release@v2
