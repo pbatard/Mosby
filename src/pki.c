@@ -21,6 +21,7 @@
 #include "file.h"
 #include "pki.h"
 #include "random.h"
+#include "utf8.h"
 
 #include <Guid/ImageAuthentication.h>
 #include <Guid/WinCertificate.h>
@@ -133,9 +134,9 @@ exit:
 	return Status;
 }
 
-VOID* GenerateCredentials(
-	IN CONST CHAR8 *CertName,
-	OUT VOID **GeneratedKey
+EFI_STATUS GenerateCredentials(
+	IN CONST CHAR16 *CertName,
+	OUT MOSBY_CRED *Credentials
 )
 {
 	EFI_STATUS Status;
@@ -143,9 +144,13 @@ VOID* GenerateCredentials(
 	INTN NumLeapDays = 0, i;
 	EVP_PKEY *Key = NULL;
 	X509 *Cert = NULL;
+	CHAR8 Utf8Name[120] = { 0 };
 	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 };
 	time_t Epoch;
 	unsigned int Len;
+
+	if (CertName == NULL || Credentials == NULL)
+		return EFI_INVALID_PARAMETER;
 
 	// Create a new RSA-2048 keypair
 	Key = EVP_RSA_gen(2048);
@@ -208,8 +213,13 @@ VOID* GenerateCredentials(
 	X509_set1_notAfter(Cert, asn1time);
 	ASN1_TIME_free(asn1time);
 
+	Status = Utf16ToUtf8(CertName, Utf8Name, sizeof(Utf8Name));
+	if (AsciiStrLen(Utf8Name) < sizeof(Utf8Name) - 14)
+		AsciiSPrint(&Utf8Name[AsciiStrLen(Utf8Name)], sizeof(Utf8Name) - AsciiStrLen(Utf8Name),
+			// Whoever designed 'struct tm' should be tried for crimes against humanity!
+			" [%d.%02d.%02d]", 1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday);
 	X509_NAME* name = X509_get_subject_name(Cert);
-	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8*)CertName, -1, -1, 0);
+	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8*)Utf8Name, -1, -1, 0);
 	X509_set_issuer_name(Cert, name);
 
 	// Certify and sign with the private key we created
@@ -226,21 +236,16 @@ exit:
 	if (EFI_ERROR(Status)) {
 		EVP_PKEY_free(Key);
 		X509_free(Cert);
-		return NULL;
+	} else {
+		Credentials->Key = Key;
+		Credentials->Cert = Cert;
 	}
-
-	// If the caller doesn't need the generated key, discard it
-	if (GeneratedKey == NULL)
-		EVP_PKEY_free(Key);
-	else
-		*GeneratedKey = Key;
-	return Cert;
+	return Status;
 }
 
 EFI_STATUS SaveCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key,
-	IN CONST CHAR16 *BaseName
+	IN CONST CHAR16 *BaseName,
+	IN CONST MOSBY_CRED *Credentials
 )
 {
 	EFI_STATUS Status;
@@ -253,10 +258,10 @@ EFI_STATUS SaveCredentials(
 	unsigned int KeyIdLen = 0;
 
 	// Generate PKCS#12 data
-	if (!X509_digest((X509*)Cert, EVP_sha256(), KeyId, &KeyIdLen))
+	if (!X509_digest((X509*)Credentials->Cert, EVP_sha256(), KeyId, &KeyIdLen))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
-	X509_keyid_set1((X509*)Cert, KeyId, KeyIdLen);
-	p12 = PKCS12_create(NULL, NULL, (EVP_PKEY*)Key, (X509*)Cert, NULL, NID_undef, NID_undef, 0, 0, 0);
+	X509_keyid_set1((X509*)Credentials->Cert, KeyId, KeyIdLen);
+	p12 = PKCS12_create(NULL, NULL, (EVP_PKEY*)Credentials->Key, (X509*)Credentials->Cert, NULL, NID_undef, NID_undef, 0, 0, 0);
 	if (p12 == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 
@@ -283,7 +288,7 @@ EFI_STATUS SaveCredentials(
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL)
 		ReportOpenSSLErrorAndExit(EFI_OUT_OF_RESOURCES);
-	if (!PEM_write_bio_X509(bio, (X509*)Cert))
+	if (!PEM_write_bio_X509(bio, (X509*)Credentials->Cert))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
@@ -295,7 +300,7 @@ EFI_STATUS SaveCredentials(
 
 #if 0
 	// Save certificate as DER encoded .cer
-	Size = (INTN)i2d_X509(Cert, NULL);
+	Size = (INTN)i2d_X509(Credentials->Cert, NULL);
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Buffer = AllocateZeroPool(Size);
@@ -304,7 +309,7 @@ EFI_STATUS SaveCredentials(
 		ReportErrorAndExit(L"Failed to allocate DER buffer\n");
 	}
 	Ptr = Buffer;	// i2d_###() modifies the pointer
-	Size = (INTN)i2d_X509(Cert, &Ptr);
+	Size = (INTN)i2d_X509(Credentials->Cert, &Ptr);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.cer", BaseName);
@@ -318,7 +323,7 @@ EFI_STATUS SaveCredentials(
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL)
 		ReportOpenSSLErrorAndExit(EFI_OUT_OF_RESOURCES);
-	if (!PEM_write_bio_PKCS8PrivateKey(bio, (EVP_PKEY*)Key, EVP_aes_256_cbc(), "", 0, NULL, NULL))
+	if (!PEM_write_bio_PKCS8PrivateKey(bio, (EVP_PKEY*)Credentials->Key, EVP_aes_256_cbc(), "", 0, NULL, NULL))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Size = (INTN)BIO_get_mem_data(bio, &Buffer);
 	if (Size <= 0)
@@ -336,12 +341,15 @@ exit:
 }
 
 VOID FreeCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key
+	IN MOSBY_CRED *Credentials
 )
 {
-	X509_free((X509*)Cert);
-	EVP_PKEY_free((EVP_PKEY*)Key);
+	if (Credentials != NULL) {
+		X509_free((X509*)Credentials->Cert);
+		Credentials->Cert = NULL;
+		EVP_PKEY_free((EVP_PKEY*)Credentials->Key);
+		Credentials->Key = NULL;
+	}
 }
 
 EFI_STATUS CertToAuthVar(
@@ -356,9 +364,12 @@ EFI_STATUS CertToAuthVar(
 	UINT8 *Ptr;
 	EFI_GUID OwnerGuid;
 	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
+	CHAR8 Subject[128];
 
 	if (Cert == NULL || Variable == NULL)
 		return EFI_INVALID_PARAMETER;
+
+	SetMem(Variable, sizeof(AUTHENTICATED_VARIABLE), 0);
 
 	Size = (INTN)i2d_X509((X509*)Cert, NULL);
 	if (Size <= 0)
@@ -396,10 +407,19 @@ EFI_STATUS CertToAuthVar(
 		ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
 	}
 
+	Size = X509_NAME_get_text_by_NID(X509_get_subject_name((X509*)Cert),
+		NID_commonName, Subject, sizeof(Subject));
+	if (Size > 0) {
+		Variable->Description= AllocateZeroPool((Size + 1) * sizeof(CHAR16));
+		if (Variable->Description != NULL)
+			Status = Utf8ToUtf16(Subject, Variable->Description, Size + 1);
+	}
+
 exit:
 	if (EFI_ERROR(Status)) {
 		Variable->Size = 0;
-		Variable->Data = NULL;
+		SafeFree(Variable->Description);
+		SafeFree(Variable->Data);
 	}
 	return Status;
 }
@@ -410,15 +430,20 @@ EFI_STATUS LoadToAuthVar(
 )
 {
 	EFI_STATUS Status;
+	INTN i;
 	UINTN Size, HeaderSize;
 	UINT8 *Buffer = NULL;
+	CONST CHAR16 *BaseName;
 	CONST UINT8 *Ptr;
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	EFI_VARIABLE_AUTHENTICATION_2 *SignedEsl = NULL;
 	BIO *bio = NULL;
 
-	if (Path == NULL || Variable == NULL)
+	if (Path == NULL || Path[0] == L'\0' || Variable == NULL)
 		return EFI_INVALID_PARAMETER;
+
+	for (i = StrLen(Path) - 1; i >= 0 && Path[i] != L'/' && Path[i] != L'\\'; i--);
+	BaseName = &Path[i + 1];
 
 	if (!SimpleFileExistsByPath(gBaseImageHandle, Path))
 		ReportErrorAndExit(L"File '%s' does not exist\n", Path);
@@ -452,6 +477,12 @@ EFI_STATUS LoadToAuthVar(
 		Buffer = NULL;	// Don't free our data
 		Variable->Size = Size;
 		Variable->Data = SignedEsl;
+		Size = (StrLen(BaseName) + 16) * sizeof(CHAR16);
+		Variable->Description = AllocateZeroPool(Size);
+		if (Variable->Description != NULL) {
+			UnicodeSPrint(Variable->Description, Size, L"%s [%d.%02d.%02d]", BaseName,
+				SignedEsl->TimeStamp.Year, SignedEsl->TimeStamp.Month, SignedEsl->TimeStamp.Day);
+		}
 		Status = EFI_SUCCESS;
 		goto exit;
 	}
@@ -480,6 +511,9 @@ EFI_STATUS LoadToAuthVar(
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
 		Buffer = NULL;	// CreateTimeBasedPayload freed Esl = Buffer already
+		Size = (StrLen(BaseName) + 1) * sizeof(CHAR16);
+		Variable->Description = AllocateZeroPool(Size);
+		CopyMem(Variable->Description, BaseName, Size);
 	}
 
 	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
@@ -489,7 +523,8 @@ exit:
 	FreePool(Buffer);
 	if (EFI_ERROR(Status)) {
 		Variable->Size = 0;
-		Variable->Data = NULL;
+		SafeFree(Variable->Description);
+		SafeFree(Variable->Data);
 	}
 	return Status;
 }
@@ -499,8 +534,7 @@ EFI_STATUS SignToAuthVar(
 	IN CONST EFI_GUID *VendorGuid,
 	IN CONST UINT32 Attributes,
 	IN OUT AUTHENTICATED_VARIABLE *Variable,
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key
+	IN CONST MOSBY_CRED *Credentials
 )
 {
 	CONST INTN PAYLOAD = 4;
@@ -557,7 +591,7 @@ EFI_STATUS SignToAuthVar(
 	p7 = PKCS7_sign(NULL, NULL, NULL, bio, flags | PKCS7_PARTIAL);
 	if (p7 == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
-	if (PKCS7_sign_add_signer(p7, (X509*)Cert, (EVP_PKEY*)Key, EVP_get_digestbyname("SHA256"), flags) == NULL)
+	if (PKCS7_sign_add_signer(p7, (X509*)Credentials->Cert, (EVP_PKEY*)Credentials->Key, EVP_get_digestbyname("SHA256"), flags) == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	if (!PKCS7_final(p7, bio, flags))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);

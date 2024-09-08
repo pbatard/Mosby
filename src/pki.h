@@ -21,24 +21,27 @@
 #include <Base.h>
 #include <Uefi.h>
 
+typedef struct {
+	VOID *Cert;
+	VOID *Key;
+} MOSBY_CRED;
+
 EFI_STATUS InitializePki(
 	IN CONST BOOLEAN TestMode
 );
 
-VOID* GenerateCredentials(
-	IN CONST CHAR8 *CertName,
-	OUT VOID **GeneratedKey
+EFI_STATUS GenerateCredentials(
+	IN CONST CHAR16 *CertName,
+	OUT MOSBY_CRED *Credentials
 );
 
 EFI_STATUS SaveCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key,
-	IN CONST CHAR16 *BaseName
+	IN CONST CHAR16 *BaseName,
+	IN CONST MOSBY_CRED *Credentials
 );
 
 VOID FreeCredentials(
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key
+	IN MOSBY_CRED *Credentials
 );
 
 EFI_STATUS CertToAuthVar(
@@ -56,6 +59,5 @@ EFI_STATUS SignToAuthVar(
 	IN CONST EFI_GUID *VendorGuid,
 	IN CONST UINT32 Attributes,
 	IN OUT AUTHENTICATED_VARIABLE *Variable,
-	IN CONST VOID *Cert,
-	IN CONST VOID *Key
+	IN CONST MOSBY_CRED *Credentials
 );

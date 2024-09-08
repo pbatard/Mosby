@@ -43,6 +43,25 @@
 
 #include "../config.h"
 
+#if defined(_M_X64) || defined(__x86_64__)
+	#define ARCH_NAME   L"x86 (64 bit)"
+	#define ARCH_EXT    L"x64"
+#elif defined(_M_IX86) || defined(__i386__)
+	#define ARCH_NAME   L"x86 (32 bit)"
+	#define ARCH_EXT    L"ia32"
+#elif defined (_M_ARM64) || defined(__aarch64__)
+	#define ARCH_NAME   L"ARM (64 bit)"
+	#define ARCH_EXT    L"aa64"
+#elif defined (_M_ARM) || defined(__arm__)
+	#define ARCH_NAME   L"ARM (32 bit)"
+	#define ARCH_EXT    L"arm"
+#elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
+	#define ARCH_NAME   L"RISC-V (64 bit)"
+	#define ARCH_EXT    L"riscv64"
+#else
+#	error Unsupported architecture
+#endif
+
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
 
@@ -58,6 +77,7 @@ enum {
 };
 
 typedef struct {
+	CHAR16 *Description;
 	UINTN Size;
 	EFI_VARIABLE_AUTHENTICATION_2 *Data;
 } AUTHENTICATED_VARIABLE;
