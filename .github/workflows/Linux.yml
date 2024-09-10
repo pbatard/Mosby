@@ -108,21 +108,8 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
 
-    - name: Download resources
-      run: |
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?LinkId=321185 -o certs/kek_ms1.cer
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239775 -o certs/kek_ms2.cer
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321192 -o certs/db_ms1.cer
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321194 -o certs/db_ms2.cer
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239776 -o certs/db_ms3.cer
-        curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239872 -o certs/db_ms4.cer
-        curl --create-dirs -L https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin -o dbx/dbx_ia32.bin
-        curl --create-dirs -L https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin -o dbx/dbx_x64.bin
-        curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin -o dbx/dbx_arm.bin
-        curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
-
     - name: Create release archive
-      run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./image/MosbyList.txt ./image/Mosby.nsh certs/ dbx/ ./*/*.efi
+      run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./Mosby.nsh ./*/*.efi
 
     - name: Create release
       uses: softprops/action-gh-release@v2

@@ -20,6 +20,7 @@
 
 [Sources]
   src/console.c
+  src/data.c
   src/file.c
   src/mosby.c
   src/pki.c

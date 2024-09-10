@@ -76,15 +76,14 @@ And it does so by making incredibly **easy** to install your own set of Secure B
 
 ## Usage
 
-1. Create a UEFI Shell bootable media. If you don't have such a media, you can *easily*
-   create one on Windows through [Rufus](https://rufus.ie) by using the SELECT/DOWNLOAD split
-   button and then choosing "UEFI Shell" in the download selection:
+1. Create a UEFI Shell bootable media.  
+   If you don't have such a media, you can *easily*  create one on Windows through
+   [Rufus](https://rufus.ie) by using the SELECT/DOWNLOAD split button and then choosing
+   *UEFI Shell* in the download selection:  
    https://raw.githubusercontent.com/wiki/pbatard/rufus/images/download.gif
 
 2. Extract all the content from the latest Mosby download archive at the top level of the
-   boot media you created in the previous step. Especially, make sure that `MosbyList.txt`
-   exists along with the various `.efi` and `.nsh` files and that all the binaries referenced
-   in `MosbyList.txt` can be found in their respective location.
+   boot media you created in the previous step.
 
 3. Boot the computer where you want to install the keys into the UEFI firmware settings and
    make sure that your platform is in *Setup Mode*. Please refer to your manufacturer's
@@ -96,27 +95,6 @@ And it does so by making incredibly **easy** to install your own set of Secure B
 
 5. Once the installation is complete, reboot into UEFI firmware settings, and make sure that
    Secure Boot is enabled.
-
-## Support file download
-
-If using the default `MosbyList.txt` from this repository, you will need to
-download the required support files by issuing the following commands (which
-should work from the commandline on any recent Windows or Linux machine):
-```
-curl --create-dirs -L https://go.microsoft.com/fwlink/?LinkId=321185 -o certs/kek_ms1.cer
-curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239775 -o certs/kek_ms2.cer
-curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321192 -o certs/db_ms1.cer
-curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=321194 -o certs/db_ms2.cer
-curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239776 -o certs/db_ms3.cer
-curl --create-dirs -L https://go.microsoft.com/fwlink/?linkid=2239872 -o certs/db_ms4.cer
-curl --create-dirs -L https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin -o dbx/dbx_ia32.bin
-curl --create-dirs -L https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin -o dbx/dbx_x64.bin
-curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin -o dbx/dbx_arm.bin
-curl --create-dirs -L https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin -o dbx/dbx_aa64.bin
-```
-
-Note that the most recent version of these files (at the time a the release was created) is
-provided in the release archive.
 
 ## Compilation
 
@@ -143,6 +121,12 @@ export WORKSPACE=$PWD
 export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
 source edk2/edksetup.sh
 build -a X64 -b RELEASE -t GCC5 -p MosbyPkg.dsc
+```
+
+Note that, if you have `bash` with `curl`, `OpenSSL` and `sed` installed, you can recreate
+`data.c` by running the following command in the `src/` directory:
+```
+./gen_data.sh > data.c
 ```
 
 ## Mini FAQ
@@ -184,8 +168,7 @@ If asked for a passphrase, just press <kbd>Enter</kbd>.
 
 ### How can you state that your application makes Secure Boot more Secure?
 
-Easy. If you had used `Mosby` with the default list file, then even on a PC where the default
-UEFI keys were subject to
+Easy. If you had used `Mosby` then even on a PC where the default UEFI keys were subject to
 [this vulnerability](https://it.slashdot.org/story/24/07/25/2028258/secure-boot-is-completely-broken-on-200-models-from-5-big-device-makers),
 the vulnerability would have been fully closed and rendered inexploitable.
 

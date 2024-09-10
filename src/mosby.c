@@ -72,135 +72,6 @@ STATIC struct {
 	}
 };
 
-STATIC CHAR16* StrDup(
-	IN CONST CHAR16* Src
-)
-{
-	CHAR16* Dst;
-
-	if (Src == NULL)
-		return NULL;
-
-	Dst = AllocateZeroPool((StrLen(Src) + 1) * sizeof(CHAR16));
-	if (Dst != NULL)
-		CopyMem(Dst, Src, (StrLen(Src) + 1) * sizeof(CHAR16));
-
-	return Dst;
-}
-
-/* Convert a UTF-8 path to UTF-16 while replacing any %ARCH% token */
-STATIC CHAR16* ConvertPath(
-	IN CHAR8 *Src
-)
-{
-	EFI_STATUS Status = EFI_INVALID_PARAMETER;
-	CONST CHAR8 *Token = "%ARCH%";
-	CHAR16 Dst[MAX_PATH], Frag[MAX_PATH];
-	CHAR8 *Ptr, Old;
-
-	if (AsciiStrLen(Src) > MAX_PATH)
-		ReportErrorAndExit(L"Path data is longer than %d characters\n", MAX_PATH);
-
-	*Dst = L'\0';
-	while ((Ptr = AsciiStrStr(Src, Token)) != NULL) {
-		Old = *Ptr;
-		*Ptr = 0;
-		if (*Src != '\0') {
-			Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-			Status = StrCatS(Dst, MAX_PATH, Frag);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		}
-		Status = StrCatS(Dst, MAX_PATH, ARCH_EXT);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		Src = &Ptr[AsciiStrLen(Token)];
-		*Ptr = Old;
-	}
-	if (*Src != '\0') {
-		Status = Utf8ToUtf16(Src, Frag, ARRAY_SIZE(Frag));
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-		Status = StrCatS(Dst, MAX_PATH, Frag);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to convert '%a'\n", Src);
-	}
-
-exit:
-	return EFI_ERROR(Status) ? NULL : StrDup(Dst);
-}
-
-EFI_STATUS ParseList(
-	IN CONST CHAR16 *ListFileName,
-	OUT INSTALLABLE_COLLECTION *Installable
-)
-{
-	UINTN i, Type;
-	EFI_STATUS Status;
-
-	SetMem((VOID *)Installable, sizeof(INSTALLABLE_COLLECTION), 0);
-
-	// NB: SimpleFileReadAllByPath() adds an extra NUL to the data read
-	Status = SimpleFileReadAllByPath(gBaseImageHandle, ListFileName, &Installable->ListDataSize, (VOID**)&Installable->ListData);
-	if (EFI_ERROR(Status))
-		goto exit;
-
-	for (i = 0; i < Installable->ListDataSize; i++)
-		if (Installable->ListData[i] == '\r' || Installable->ListData[i] == '\n')
-			Installable->ListData[i] = 0;
-	for (i = 0; i < Installable->ListDataSize; ) {
-		// Ignore whitespaces and control characters
-		while (Installable->ListData[i] <= ' ' && i < Installable->ListDataSize)
-			i++;
-		if (i >= Installable->ListDataSize)
-			break;
-		if (Installable->ListData[i] == '#') {
-			// Ignore comments
-		} else if (Installable->ListData[i] == '[') {
-			if (AsciiStrCmp(&Installable->ListData[i], "[SILENT]") == 0) {
-				gOptionSilent = TRUE;
-			} else {
-				Status = EFI_NO_MAPPING;
-				ReportErrorAndExit(L"Unrecognized option '%a'\n", &Installable->ListData[i]);
-			};
-		} else {
-			for (Type = 0; Type < MAX_TYPES; Type++) {
-				if (i + AsciiStrLen(KeyInfo[Type].DisplayName) >= Installable->ListDataSize)
-					continue;
-				if (AsciiStrnCmp(KeyInfo[Type].DisplayName, &Installable->ListData[i], AsciiStrLen(KeyInfo[Type].DisplayName)) != 0)
-					continue;
-				if (!IsWhiteSpace(Installable->ListData[i + AsciiStrLen(KeyInfo[Type].DisplayName)]))
-					continue;
-				i += AsciiStrLen(KeyInfo[Type].DisplayName);
-				while (IsWhiteSpace(Installable->ListData[i]) && i < Installable->ListDataSize)
-					i++;
-				if (Installable->List[Type].NumEntries < MOSBY_MAX_ENTRIES) {
-					Installable->List[Type].Path[Installable->List[Type].NumEntries] =
-						ConvertPath(&Installable->ListData[i]);
-					if (Installable->List[Type].Path[Installable->List[Type].NumEntries] == NULL)
-						return EFI_NO_MAPPING;
-					Installable->List[Type].NumEntries++;
-				}
-				break;
-			}
-			if (Type >= MAX_TYPES) {
-				Status = EFI_NO_MAPPING;
-				ReportErrorAndExit(L"Failed to parse '%s'\n", ListFileName);
-				break;
-			}
-		}
-		while (Installable->ListData[i] != '\0' && i < Installable->ListDataSize)
-			i++;
-	}
-	Status = EFI_SUCCESS;
-
-exit:
-	return Status;
-}
-
-
 /*
  * Application entry-point
  */
@@ -212,18 +83,27 @@ EFI_STATUS EFIAPI efi_main(
 	// TODO: MOK may need different options
 	CONST UINT32 Attributes = EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_RUNTIME_ACCESS |
 		EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
-	BOOLEAN TestMode = FALSE;
+	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, Append;
 	EFI_STATUS Status, SetStatus;
-	INTN Argc, Type, Entry, Sel;
+	EFI_TIME Time;
+	UINTN i;
+	INTN Argc, Type, Sel;
 	MOSBY_CRED Cred;
-	CHAR16 **Argv = NULL, **ArgvCopy, Path[MAX_PATH];
-	INSTALLABLE_COLLECTION Installable = { 0 };
+	CHAR8 DbSubject[80], PkSubject[80];
+	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
+	MOSBY_LIST List;
 
 	ConsoleReset();
-	RecallPrint(L"Mosby %a\n", VERSION_STRING);
+	RecallPrint(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
 	gBaseImageHandle = BaseImageHandle;
+	gRT->GetTime(&Time, NULL);
 
-	/* 0. Parse arguments */
+	/* Initialize the base entry list */
+	Status = InitializeList(&List);
+	if (EFI_ERROR(Status))
+		goto exit;
+
+	/* Parse arguments */
 	Status = ArgSplit(gBaseImageHandle, &Argc, &Argv);
 	if (Status == EFI_SUCCESS) {
 		ArgvCopy = Argv;
@@ -238,33 +118,32 @@ EFI_STATUS EFIAPI efi_main(
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
 				goto exit;
+			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
+				Print(L"\nThis version includes:\n");
+				for (i = 0; i < List.Size; i++)
+					Print(L"o %a:\t%a\n\tFrom %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
+						List.Entry[i].Description, List.Entry[i].Url);
+				goto exit;
 			} else {
 				// Unsupported argument
 				break;
 			}
 		}
+		// TODO: Add db, dbx, etc processing
+		// TODO: Make sure only one PK can be provided by the user
 	}
 
-	/* 1. Initialize the random generator and validate the platform */
+	/* Initialize the random generator and validate the platform */
 	Status = InitializePki(TestMode);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"ERROR: This platform does not meet the minimum security requirements.\n");
 
-	/* 2. Verify that the platform is in Setup Mode */
+	/* Verify that the platform is in Setup Mode */
 	Status = CheckSetupMode(TestMode);
 	if (EFI_ERROR(Status))
 		goto exit;
 
-	/* 3. Parse and validate the list file */
-	Status = ParseList(MOSBY_LIST_NAME, &Installable);
-	if (EFI_ERROR(Status))
-		goto exit;
-	if (Installable.List[PK].NumEntries > 1) {
-		RecallPrint(L"WARNING: More than one PK was specified. Only the first will be used.");
-		Installable.List[PK].NumEntries = 1;
-	};
-
-	/* 4. Prompt the user about the changes we are going to make */
+	/* Prompt the user about the changes we are going to make */
 	if (!gOptionSilent) {
 		Sel = ConsoleOkCancel(
 			(CONST CHAR16 *[]){
@@ -284,157 +163,163 @@ EFI_STATUS EFIAPI efi_main(
 			goto exit;
 	}
 
-	/* 5. Load and validate the support files (KEKs, DBs, DBX, etc) */
-	for (Type = 0; Type < MAX_TYPES; Type++) {
-		for (Entry = 0; Entry < Installable.List[Type].NumEntries; Entry++) {
-
-			if (Installable.List[Type].Path[Entry] == NULL)
-				continue;
-
-			// DB/PK types have modes such as [DETECT], [GENERATE], [PROMPT]
-			if ((Type == DB || Type == PK) && StrCmp(Installable.List[Type].Path[Entry], L"[GENERATE]") == 0)
-				continue;
-
-			if (Type == DB && StrCmp(Installable.List[Type].Path[Entry], L"[DETECT]") == 0) {
-				SafeFree(Installable.List[Type].Path[Entry]);
-				// If we have an existing cert for a previously generated DB credential, try to reuse it
-				UnicodeSPrint(Path, MAX_PATH, L"%s.crt", MOSBY_CRED_NAME);
-				// Switch to [PROMPT] if we can't access an exisiting cert
-				if (SimpleFileExistsByPath(gBaseImageHandle, Path))
-					Installable.List[Type].Path[Entry] = StrDup(Path);
-				else
-					Installable.List[Type].Path[Entry] = StrDup(L"[PROMPT]");
+	/* If we have an existing cert for a previously generated DB credential, try to reuse it */
+	UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%s.crt", MOSBY_CRED_NAME);
+	if (SimpleFileExistsByPath(gBaseImageHandle, MosbyKeyPath)) {
+		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
+			Status = EFI_OUT_OF_RESOURCES;
+			ReportErrorAndExit(L"List size is too small\n");
+		}
+		RecallPrint(L"Reusing existing %s certificate...\n", MosbyKeyPath);
+		List.Entry[List.Size].Type = DB;
+		List.Entry[List.Size].Path = MosbyKeyPath;
+		List.Size++;
+	} else {
+		Sel = ConsoleSelect(
+			(CONST CHAR16 *[]){
+				L"DB credentials installation",
+				L"",
+				L"Do you want to SELECT an existing Secure Boot signing certificate  ",
+				L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL  ",
+				L"any certificate for your own usage)?                               ",
+				L"",
+				L"If you don't know what to use, we recommend to GENERATE new signing",
+				L"credentials, so that you will be able to sign your own Secure Boot ",
+				L"binaries for this system.                                          ",
+				NULL
+			},
+			(CONST CHAR16 *[]){
+				L"SELECT",
+				L"GENERATE",
+				L"DON'T INSTALL",
+				NULL
+			}, 1);
+		RecallPrintRestore();
+		if (Sel == 0) {
+			CHAR16 Title[80];
+			EFI_HANDLE Handle = NULL;
+			UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select an existing certificate");
+			Status = SimpleFileSelector(&Handle,
+				(CONST CHAR16 *[]){
+					L"",
+					Title,
+					NULL
+				}, L"\\", L".cer|.crt", &List.Entry[List.Size].Path);
+			RecallPrintRestore();
+			if (EFI_ERROR(Status) || !SimpleFileExistsByPath(gBaseImageHandle, List.Entry[List.Size].Path)) {
+				SafeFree(List.Entry[List.Size].Path);
+				RecallPrint(L"Invalid selection -- Will generate new signing credentials\n");
+				GenDBCred = TRUE;
 			}
+			List.Size++;
+		} else if (Sel == 1) {
+			GenDBCred = TRUE;
+		}
+	}
 
-			if (Type == DB && StrCmp(Installable.List[Type].Path[Entry], L"[PROMPT]") == 0) {
-				Sel = ConsoleSelect(
-					(CONST CHAR16 *[]){
-						L"DB credentials installation",
-						L"",
-						L"Do you want to SELECT an existing Secure Boot signing certificate  ",
-						L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL  ",
-						L"any certificate for your own usage)?                               ",
-						L"",
-						L"If you don't know what to use, we recommend to GENERATE new signing",
-						L"credentials, so that you will be able to sign your own Secure Boot ",
-						L"binaries for this system.                                          ",
-						NULL
-					},
-					(CONST CHAR16 *[]){
-						L"SELECT",
-						L"GENERATE",
-						L"DON'T INSTALL",
-						NULL
-					}, 1);
-				RecallPrintRestore();
-				SafeFree(Installable.List[Type].Path[Entry]);
-				if (Sel == 0) {
-					Installable.List[Type].Path[Entry] = StrDup(L"[SELECT]");
-				} else if (Sel == 1) {
-					Installable.List[Type].Path[Entry] = StrDup(L"[GENERATE]");
-					continue;
-				} else {
-					Installable.List[Type].Path[Entry] = NULL;
-					continue;
-				}
-			}
-
-			if (StrCmp(Installable.List[Type].Path[Entry], L"[SELECT]") == 0) {
-				CHAR16 Title[80];
-				EFI_HANDLE Handle = NULL;
-				SafeFree(Installable.List[Type].Path[Entry]);
-				UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select %a %s",
-					KeyInfo[Type].DisplayName, (Type == DBX) ? L"binary" : L"certificate");
-				Status = SimpleFileSelector(&Handle,
-					(CONST CHAR16 *[]){
-						L"",
-						Title,
-						NULL
-					}, L"\\", L".cer|.crt|.esl|.bin|.auth", &Installable.List[Type].Path[Entry]);
-				RecallPrintRestore();
-				if (EFI_ERROR(Status))
-					continue;
-				if (!SimpleFileExistsByPath(gBaseImageHandle, Installable.List[Type].Path[Entry])) {
-					RecallPrint(L"No valid file selected for %a[%d] - Ignoring\n", KeyInfo[Type].DisplayName, Entry);
-					continue;
-				}
-			}
-
-			Status = LoadToAuthVar(Installable.List[Type].Path[Entry], &Installable.List[Type].Variable[Entry]);
-			if (EFI_ERROR(Status)) {
-				RecallPrint(L"Failed to load %a[%d] - Aborting\n", KeyInfo[Type].DisplayName, Entry);
+	/* Process binaries that have been provided to the application */
+	for (i = 0; i < List.Size; i++) {
+		if (List.Entry[i].Variable.Data != NULL)
+			continue;
+		if (List.Entry[i].Path != NULL && List.Entry[i].Buffer.Data == NULL) {
+			if (!SimpleFileExistsByPath(gBaseImageHandle, List.Entry[i].Path))
+				ReportErrorAndExit(L"File '%s' does not exist\n", List.Entry[i].Path);
+			Status = SimpleFileReadAllByPath(gBaseImageHandle, List.Entry[i].Path,
+				&List.Entry[i].Buffer.Size, (VOID**)&List.Entry[i].Buffer.Data);
+			if (EFI_ERROR(Status))
 				goto exit;
-			}
 		}
-	}
-
-	/* 6. Generate a keyless PK cert if none was specified */
-	if (Installable.List[PK].Variable[0].Data == NULL) {
-		RecallPrint(L"Generating PK certificate...\n");
-		SafeFree(Installable.List[PK].Path[0]);
-		Installable.List[PK].Path[0] = StrDup(L"AutoGenerated");
-		Status = GenerateCredentials(L"Mosby Generated PK", &Cred);
+		Status = PopulateAuthVar(&List.Entry[i]);
 		if (EFI_ERROR(Status))
-			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &Installable.List[PK].Variable[0]);
-		if (EFI_ERROR(Status)) {
-			FreeCredentials(&Cred);
-			goto exit;
-		}
-		Status = SignToAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
-			Attributes, &Installable.List[PK].Variable[0], &Cred);
-		FreeCredentials(&Cred);
+			ReportErrorAndExit(L"Failed to create variable - Aborting\n");
 	}
 
-	/* 7. Generate DB credentials if requested */
-	for (Entry = 0; Entry < Installable.List[DB].NumEntries &&
-		StrCmp(Installable.List[DB].Path[Entry], L"[GENERATE]") != 0; Entry++);
-	if (Entry < Installable.List[DB].NumEntries) {
+	/* Generate DB credentials if requested */
+	if (GenDBCred) {
+		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
+			Status = EFI_OUT_OF_RESOURCES;
+			ReportErrorAndExit(L"List size is too small\n");
+		}
+		i = List.Size;
 		RecallPrint(L"Generating Secure Boot signing credentials...\n");
-		SafeFree(Installable.List[DB].Path[Entry]);
-		Installable.List[DB].Path[Entry] = StrDup(L"AutoGenerated");
-		Status = GenerateCredentials(MOSBY_CRED_NAME, &Cred);
+		List.Entry[i].Type = DB;
+		AsciiSPrint(DbSubject, sizeof(DbSubject), "%a [%04d.%02d.%02d]",
+			MOSBY_CRED_NAME, Time.Year, Time.Month, Time.Day);
+		List.Entry[i].Description = DbSubject;
+		Status = GenerateCredentials(DbSubject, &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &Installable.List[DB].Variable[Entry]);
+		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable);
 		if (EFI_ERROR(Status)) {
 			FreeCredentials(&Cred);
 			goto exit;
 		}
-		Status = SaveCredentials(MOSBY_CRED_NAME, &Cred);
+		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		RecallPrint(L"Saved Secure Boot signing credentials as '%s'\n", MOSBY_CRED_NAME);
+		RecallPrint(L"Saved Secure Boot signing credentials as '%a'\n", MOSBY_CRED_NAME);
 		FreeCredentials(&Cred);
+		List.Size++;
 	}
 
-	/* 8. Install the cert and DBX variables, making sure that we finish with the PK. */
+	/* Generate a keyless PK cert if none was specified */
+	for (i = 0; i < List.Size && List.Entry[i].Type != PK; i++);
+	if (i == List.Size) {
+		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
+			Status = EFI_OUT_OF_RESOURCES;
+			ReportErrorAndExit(L"List size is too small\n");
+		}
+		RecallPrint(L"Generating PK certificate...\n");
+		List.Entry[i].Type = PK;
+		AsciiSPrint(PkSubject, sizeof(PkSubject), "Mosby Generated PK [%04d.%02d.%02d]",
+			Time.Year, Time.Month, Time.Day);
+		List.Entry[i].Description = PkSubject;
+		Status = GenerateCredentials(PkSubject, &Cred);
+		if (EFI_ERROR(Status))
+			goto exit;
+		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable);
+		if (EFI_ERROR(Status)) {
+			FreeCredentials(&Cred);
+			goto exit;
+		}
+		// PK must be signed
+		Status = SignToAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
+			Attributes, &List.Entry[i].Variable, &Cred);
+		FreeCredentials(&Cred);
+		if (EFI_ERROR(Status)) {
+			SafeFree(List.Entry[i].Variable.Data);
+			goto exit;
+		}
+		List.Size++;
+	}
+
+	/* Install the variables, making sure that we finish with the PK. */
 	// Since We have a DeleteSecureBootVariables(), we might as well call it.
 	DeleteSecureBootVariables();
 	Status = EFI_NOT_FOUND;
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
-		for (Entry = 0; Entry < Installable.List[Type].NumEntries; Entry++) {
-			if (Installable.List[Type].Variable[Entry].Data != NULL) {
-				RecallPrint(L"Installing %a:\t%s\n", KeyInfo[Type].DisplayName, Installable.List[Type].Variable[Entry].Description);
-				SetStatus = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
-					Attributes | ((Entry != 0) ? EFI_VARIABLE_APPEND_WRITE : 0),
-					Installable.List[Type].Variable[Entry].Size, Installable.List[Type].Variable[Entry].Data);
-				if (EFI_ERROR(SetStatus)) {
-					Print(L"Failed to set Secure Boot variable: %r\n", SetStatus);
-					Status = SetStatus;
-				}
+		Append = FALSE;
+		for (i = 0; i < List.Size; i++) {
+			if (List.Entry[i].Type != Type)
+				continue;
+			if (List.Entry[i].Description != NULL)
+				RecallPrint(L"Installing %a:\t%a\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
+			else
+				RecallPrint(L"Installing %a:\tfrom %s\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
+			SetStatus = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
+				Attributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0),
+				List.Entry[i].Variable.Size, List.Entry[i].Variable.Data);
+			if (EFI_ERROR(SetStatus)) {
+				RecallPrint(L"Failed to set Secure Boot variable: %r\n", SetStatus);
+				Status = SetStatus;
 			}
+			Append = TRUE;
 		}
 	}
 
 exit:
-	for (Type = 0; Type < MAX_TYPES; Type++)
-		for (Entry = 0; Entry < MOSBY_MAX_ENTRIES; Entry++) {
-			FreePool(Installable.List[Type].Path[Entry]);
-			FreePool(Installable.List[Type].Variable[Entry].Description);
-			FreePool(Installable.List[Type].Variable[Entry].Data);
-		}
-	FreePool(Installable.ListData);
+	for (i = 0; i < List.Size; i++)
+		FreePool(List.Entry[i].Variable.Data);
 	FreePool(Argv);
 	RecallPrintFree();
 	return Status;

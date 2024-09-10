@@ -135,7 +135,7 @@ exit:
 }
 
 EFI_STATUS GenerateCredentials(
-	IN CONST CHAR16 *CertName,
+	IN CONST CHAR8 *CertName,
 	OUT MOSBY_CRED *Credentials
 )
 {
@@ -144,7 +144,6 @@ EFI_STATUS GenerateCredentials(
 	INTN NumLeapDays = 0, i;
 	EVP_PKEY *Key = NULL;
 	X509 *Cert = NULL;
-	CHAR8 Utf8Name[120] = { 0 };
 	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 };
 	time_t Epoch;
 	unsigned int Len;
@@ -213,13 +212,9 @@ EFI_STATUS GenerateCredentials(
 	X509_set1_notAfter(Cert, asn1time);
 	ASN1_TIME_free(asn1time);
 
-	Status = Utf16ToUtf8(CertName, Utf8Name, sizeof(Utf8Name));
-	if (AsciiStrLen(Utf8Name) < sizeof(Utf8Name) - 14)
-		AsciiSPrint(&Utf8Name[AsciiStrLen(Utf8Name)], sizeof(Utf8Name) - AsciiStrLen(Utf8Name),
-			// Whoever designed 'struct tm' should be tried for crimes against humanity!
-			" [%d.%02d.%02d]", 1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday);
+	// Add the subject name
 	X509_NAME* name = X509_get_subject_name(Cert);
-	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8*)Utf8Name, -1, -1, 0);
+	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (UINT8*)CertName, -1, -1, 0);
 	X509_set_issuer_name(Cert, name);
 
 	// Certify and sign with the private key we created
@@ -261,7 +256,8 @@ EFI_STATUS SaveCredentials(
 	if (!X509_digest((X509*)Credentials->Cert, EVP_sha256(), KeyId, &KeyIdLen))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	X509_keyid_set1((X509*)Credentials->Cert, KeyId, KeyIdLen);
-	p12 = PKCS12_create(NULL, NULL, (EVP_PKEY*)Credentials->Key, (X509*)Credentials->Cert, NULL, NID_undef, NID_undef, 0, 0, 0);
+	p12 = PKCS12_create(NULL, NULL, (EVP_PKEY*)Credentials->Key, (X509*)Credentials->Cert,
+		NULL, NID_undef, NID_undef, 0, 0, 0);
 	if (p12 == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 
@@ -353,8 +349,8 @@ VOID FreeCredentials(
 }
 
 EFI_STATUS CertToAuthVar(
-	CONST IN VOID *Cert,
-	OUT AUTHENTICATED_VARIABLE *Variable
+	IN CONST VOID *Cert,
+	OUT MOSBY_VARIABLE *Variable
 )
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
@@ -364,12 +360,11 @@ EFI_STATUS CertToAuthVar(
 	UINT8 *Ptr;
 	EFI_GUID OwnerGuid;
 	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
-	CHAR8 Subject[128];
 
 	if (Cert == NULL || Variable == NULL)
 		return EFI_INVALID_PARAMETER;
 
-	SetMem(Variable, sizeof(AUTHENTICATED_VARIABLE), 0);
+	SetMem(Variable, sizeof(MOSBY_VARIABLE), 0);
 
 	Size = (INTN)i2d_X509((X509*)Cert, NULL);
 	if (Size <= 0)
@@ -407,124 +402,89 @@ EFI_STATUS CertToAuthVar(
 		ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
 	}
 
-	Size = X509_NAME_get_text_by_NID(X509_get_subject_name((X509*)Cert),
-		NID_commonName, Subject, sizeof(Subject));
-	if (Size > 0) {
-		Variable->Description= AllocateZeroPool((Size + 1) * sizeof(CHAR16));
-		if (Variable->Description != NULL)
-			Status = Utf8ToUtf16(Subject, Variable->Description, Size + 1);
-	}
-
 exit:
 	if (EFI_ERROR(Status)) {
 		Variable->Size = 0;
-		SafeFree(Variable->Description);
 		SafeFree(Variable->Data);
 	}
 	return Status;
 }
 
-EFI_STATUS LoadToAuthVar(
-	IN CONST CHAR16 *Path,
-	OUT AUTHENTICATED_VARIABLE* Variable
+EFI_STATUS PopulateAuthVar(
+	IN OUT MOSBY_ENTRY *Entry
 )
 {
-	EFI_STATUS Status;
-	INTN i;
-	UINTN Size, HeaderSize;
-	UINT8 *Buffer = NULL;
-	CONST CHAR16 *BaseName;
+	EFI_STATUS Status = EFI_INVALID_PARAMETER;
+	UINTN HeaderSize;
 	CONST UINT8 *Ptr;
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	EFI_VARIABLE_AUTHENTICATION_2 *SignedEsl = NULL;
 	BIO *bio = NULL;
 
-	if (Path == NULL || Path[0] == L'\0' || Variable == NULL)
-		return EFI_INVALID_PARAMETER;
-
-	for (i = StrLen(Path) - 1; i >= 0 && Path[i] != L'/' && Path[i] != L'\\'; i--);
-	BaseName = &Path[i + 1];
-
-	if (!SimpleFileExistsByPath(gBaseImageHandle, Path))
-		ReportErrorAndExit(L"File '%s' does not exist\n", Path);
-
-	Status = SimpleFileReadAllByPath(gBaseImageHandle, Path, &Size, (VOID**)&Buffer);
-	if (EFI_ERROR(Status))
+	if (Entry == NULL || Entry->Buffer.Data == NULL)
 		goto exit;
 
-	Status = EFI_INVALID_PARAMETER;
-	if (Size < sizeof(EFI_SIGNATURE_LIST))
-		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Path);
+	if (Entry->Buffer.Size < sizeof(EFI_SIGNATURE_LIST))
+		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Entry->Path);
 
 	// Check for signed ESL (PKCS#7 only)
-	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Buffer;
-	if (Size > sizeof(EFI_VARIABLE_AUTHENTICATION_2) &&
-		SignedEsl->AuthInfo.Hdr.dwLength < Size &&
+	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;
+	if (Entry->Buffer.Size > sizeof(EFI_VARIABLE_AUTHENTICATION_2) &&
+		SignedEsl->AuthInfo.Hdr.dwLength < Entry->Buffer.Size &&
 		SignedEsl->AuthInfo.Hdr.wRevision == 0x0200 &&
 		SignedEsl->AuthInfo.Hdr.wCertificateType == WIN_CERT_TYPE_EFI_GUID &&
 		CompareGuid(&SignedEsl->AuthInfo.CertType, &gEfiCertPkcs7Guid)) {
 		if (SignedEsl->AuthInfo.CertData[0] != 0x30 || SignedEsl->AuthInfo.CertData[1] != 0x82)
-			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
 		HeaderSize = (SignedEsl->AuthInfo.CertData[2] << 8) | SignedEsl->AuthInfo.CertData[3];
 		HeaderSize += OFFSET_OF(EFI_VARIABLE_AUTHENTICATION_2, AuthInfo);
 		HeaderSize += OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData);
 		HeaderSize += 4;	// For the 4 extra bytes above
-		if (HeaderSize + sizeof(EFI_SIGNATURE_LIST) > Size)
-			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		Esl = (EFI_SIGNATURE_LIST*)&Buffer[HeaderSize];
-		if (Esl->SignatureListSize != Size - HeaderSize)
-			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Path);
-		Buffer = NULL;	// Don't free our data
-		Variable->Size = Size;
-		Variable->Data = SignedEsl;
-		Size = (StrLen(BaseName) + 16) * sizeof(CHAR16);
-		Variable->Description = AllocateZeroPool(Size);
-		if (Variable->Description != NULL) {
-			UnicodeSPrint(Variable->Description, Size, L"%s [%d.%02d.%02d]", BaseName,
-				SignedEsl->TimeStamp.Year, SignedEsl->TimeStamp.Month, SignedEsl->TimeStamp.Day);
-		}
+		if (HeaderSize + sizeof(EFI_SIGNATURE_LIST) > Entry->Buffer.Size)
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
+		Esl = (EFI_SIGNATURE_LIST*)&Entry->Buffer.Data[HeaderSize];
+		if (Esl->SignatureListSize != Entry->Buffer.Size - HeaderSize)
+			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
+		Entry->Variable.Size = Entry->Buffer.Size;
+		Entry->Variable.Data = SignedEsl;
+		Entry->Buffer.Data = NULL;	// Don't double free our data
 		Status = EFI_SUCCESS;
 		goto exit;
 	}
 
 	// Check for a DER encoded X509 certificate
-	Ptr = Buffer;	// d2i_###() modifies the pointer
-	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Size), Variable);
+	Ptr = Entry->Buffer.Data;	// d2i_###() modifies the pointer
+	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Entry->Buffer.Size), &Entry->Variable);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 
 	// Check for a PEM encoded X509 certificate
-	bio = BIO_new_mem_buf(Buffer, Size);
+	bio = BIO_new_mem_buf(Entry->Buffer.Data, Entry->Buffer.Size);
 	if (bio == NULL)
-		ReportErrorAndExit(L"Failed to allocate X509 buffer\n");
-	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), Variable);
+		ReportErrorAndExit(L"Failed to create X509 buffer\n");
+	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 
 	// Check for an unsigned ESL
-	Esl = (EFI_SIGNATURE_LIST*)Buffer;
-	if (Esl->SignatureListSize == Size) {
-		Variable->Size = Esl->SignatureListSize;
-		Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
+	Esl = (EFI_SIGNATURE_LIST*)Entry->Buffer.Data;
+	if (Esl->SignatureListSize == Entry->Buffer.Size) {
+		Entry->Variable.Size = Esl->SignatureListSize;
+		Entry->Variable.Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
 		// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
-		Status = CreateTimeBasedPayload(&Variable->Size, (UINT8**)&Variable->Data, &mTime);
+		Status = CreateTimeBasedPayload(&Entry->Variable.Size, (UINT8**)&Entry->Variable.Data, &mTime);
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
-		Buffer = NULL;	// CreateTimeBasedPayload freed Esl = Buffer already
-		Size = (StrLen(BaseName) + 1) * sizeof(CHAR16);
-		Variable->Description = AllocateZeroPool(Size);
-		CopyMem(Variable->Description, BaseName, Size);
+		Entry->Buffer.Data = NULL;	// CreateTimeBasedPayload freed Esl = Buffer already
 	}
 
-	ReportErrorAndExit(L"Failed to process '%s'\n", Path);
+	ReportErrorAndExit(L"Failed to process '%s'\n", Entry->Path);
 
 exit:
 	BIO_free(bio);
-	FreePool(Buffer);
 	if (EFI_ERROR(Status)) {
-		Variable->Size = 0;
-		SafeFree(Variable->Description);
-		SafeFree(Variable->Data);
+		Entry->Variable.Size = 0;
+		SafeFree(Entry->Variable.Data);
 	}
 	return Status;
 }
@@ -533,7 +493,7 @@ EFI_STATUS SignToAuthVar(
 	IN CONST CHAR16 *VariableName,
 	IN CONST EFI_GUID *VendorGuid,
 	IN CONST UINT32 Attributes,
-	IN OUT AUTHENTICATED_VARIABLE *Variable,
+	IN OUT MOSBY_VARIABLE *Variable,
 	IN CONST MOSBY_CRED *Credentials
 )
 {

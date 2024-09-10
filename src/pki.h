@@ -31,7 +31,7 @@ EFI_STATUS InitializePki(
 );
 
 EFI_STATUS GenerateCredentials(
-	IN CONST CHAR16 *CertName,
+	IN CONST CHAR8 *CertName,
 	OUT MOSBY_CRED *Credentials
 );
 
@@ -45,19 +45,18 @@ VOID FreeCredentials(
 );
 
 EFI_STATUS CertToAuthVar(
-	CONST IN VOID *Cert,
-	OUT AUTHENTICATED_VARIABLE *Variable
+	IN CONST VOID *Cert,
+	OUT MOSBY_VARIABLE *Variable
 );
 
-EFI_STATUS LoadToAuthVar(
-	IN CONST CHAR16 *Path,
-	OUT AUTHENTICATED_VARIABLE* Variable
+EFI_STATUS PopulateAuthVar(
+	IN OUT MOSBY_ENTRY *Entry
 );
 
 EFI_STATUS SignToAuthVar(
 	IN CONST CHAR16 *VariableName,
 	IN CONST EFI_GUID *VendorGuid,
 	IN CONST UINT32 Attributes,
-	IN OUT AUTHENTICATED_VARIABLE *Variable,
+	IN OUT MOSBY_VARIABLE *Variable,
 	IN CONST MOSBY_CRED *Credentials
 );

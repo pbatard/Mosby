@@ -41,26 +41,36 @@
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
-#include "../config.h"
+/* Maximum number of binaries we can install */
+#define MOSBY_MAX_LIST_SIZE         64
 
+/* Number of years certs created by this application are valid for */
+#define MOSBY_VALID_YEARS           30
+
+/* Base name for the Secure Boot signing credentials we create */
+#define MOSBY_CRED_NAME             "MosbyKey"
+
+/* Short name of the current architecture the application runs on */
 #if defined(_M_X64) || defined(__x86_64__)
-	#define ARCH_NAME   L"x86 (64 bit)"
-	#define ARCH_EXT    L"x64"
+	#define ARCH_EXT                L"x64"
 #elif defined(_M_IX86) || defined(__i386__)
-	#define ARCH_NAME   L"x86 (32 bit)"
-	#define ARCH_EXT    L"ia32"
+	#define ARCH_EXT                L"ia32"
 #elif defined (_M_ARM64) || defined(__aarch64__)
-	#define ARCH_NAME   L"ARM (64 bit)"
-	#define ARCH_EXT    L"aa64"
+	#define ARCH_EXT                L"aa64"
 #elif defined (_M_ARM) || defined(__arm__)
-	#define ARCH_NAME   L"ARM (32 bit)"
-	#define ARCH_EXT    L"arm"
+	#define ARCH_EXT                L"arm"
 #elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
-	#define ARCH_NAME   L"RISC-V (64 bit)"
-	#define ARCH_EXT    L"riscv64"
+	#define ARCH_EXT                L"riscv64"
 #else
 #	error Unsupported architecture
 #endif
+
+/* WCHAR expansion macros */
+#define _WIDEN(s)                   L ## s
+#define WIDEN(s)                    _WIDEN(s)
+
+/* FreePool() replacement, that NULLs the freed pointer. */
+#define SafeFree(p)                 do { FreePool(p); p = NULL; } while(0)
 
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
@@ -76,25 +86,34 @@ enum {
 	MAX_TYPES
 };
 
+/* Mosby buffer struct */
 typedef struct {
-	CHAR16 *Description;
+	UINTN Size;
+	UINT8 *Data;
+} MOSBY_BUFFER;
+
+/* Mosby Secure Boot variable struct */
+typedef struct {
 	UINTN Size;
 	EFI_VARIABLE_AUTHENTICATION_2 *Data;
-} AUTHENTICATED_VARIABLE;
+} MOSBY_VARIABLE;
 
-/* Structure containing the list of "keys" for a specific type */
+/* Mosby installable entry */
 typedef struct {
-	UINTN NumEntries;
-	CHAR16 *Path[MOSBY_MAX_ENTRIES];
-	AUTHENTICATED_VARIABLE Variable[MOSBY_MAX_ENTRIES];
-} INSTALLABLE_LIST;
+	UINT8 Type;
+	CHAR16 *Path;
+	CHAR8 *Url; 
+	CHAR8 *Description;
+	MOSBY_BUFFER Buffer;
+	MOSBY_VARIABLE Variable;
+} MOSBY_ENTRY;
 
-/* Structure containing the collection of all the lists */
+/* The list of all installable entries */
 typedef struct {
-	CHAR8 *ListData;
-	UINTN ListDataSize;
-	INSTALLABLE_LIST List[MAX_TYPES];
-} INSTALLABLE_COLLECTION;
+	UINTN Size;
+	MOSBY_ENTRY Entry[MOSBY_MAX_LIST_SIZE];
+} MOSBY_LIST;
 
-/* FreePool() replacement, that NULLs the freed pointer. */
-#define SafeFree(p)  do { FreePool(p); p = NULL; } while(0)
+EFI_STATUS InitializeList(
+	IN OUT MOSBY_LIST *List
+);
