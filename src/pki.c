@@ -582,3 +582,22 @@ exit:
 	FreePool(SignData);
 	return Status;
 }
+
+CHAR8* Sha256ToString(
+	CONST UINT8 *Buffer,
+	CONST UINTN Size
+)
+{
+	STATIC CHAR8 HashString[SHA256_DIGEST_LENGTH * 2 + 1];
+	UINT8 i, Hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha256;
+
+	SHA256_Init(&sha256);
+	SHA256_Update(&sha256, Buffer, Size);
+	SHA256_Final(Hash, &sha256);
+
+	for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
+		AsciiSPrint(&HashString[i * 2], sizeof(HashString) - (i * 2), "%02x", Hash[i]);
+
+	return HashString;
+}

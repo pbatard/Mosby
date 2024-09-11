@@ -96,6 +96,10 @@ And it does so by making incredibly **easy** to install your own set of Secure B
 5. Once the installation is complete, reboot into UEFI firmware settings, and make sure that
    Secure Boot is enabled.
 
+If needed, you can also provide your own DB/DBX/DBT/KEK/PK/MOK binaries in DER, PEM, ESL or
+signed ESL format, by using something like `-db canonical_ca.cer` to point a Secure Boot
+variable to the data you want to install for it.
+
 ## Compilation
 
 Because Mosby depends on OpenSSL to provide the various cryptography function it needs, and

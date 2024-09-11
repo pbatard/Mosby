@@ -60,3 +60,8 @@ EFI_STATUS SignToAuthVar(
 	IN OUT MOSBY_VARIABLE *Variable,
 	IN CONST MOSBY_CRED *Credentials
 );
+
+CHAR8* Sha256ToString(
+	CONST UINT8 *Buffer,
+	CONST UINTN Size
+);

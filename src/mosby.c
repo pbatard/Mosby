@@ -37,36 +37,43 @@ STATIC EFI_GUID gEfiShimLockGuid =
 /* Attributes for the "key" types we support */
 STATIC struct {
 	CHAR8 *DisplayName;
+	CHAR16 *OptionName;
 	CHAR16 *VariableName;
 	EFI_GUID *VariableGuid;
 } KeyInfo[MAX_TYPES] = {
 	[PK] = {
-		.DisplayName = "PK",
+		.DisplayName  = "PK: ",
+		.OptionName   = L"-pk",
 		.VariableName = EFI_PLATFORM_KEY_NAME,
 		.VariableGuid = &gEfiGlobalVariableGuid,
 	},
 	[KEK] = {
-		.DisplayName = "KEK",
+		.DisplayName  = "KEK:",
+		.OptionName   = L"-kek",
 		.VariableName = EFI_KEY_EXCHANGE_KEY_NAME,
 		.VariableGuid = &gEfiGlobalVariableGuid,
 	},
 	[DB] = {
-		.DisplayName = "DB",
+		.DisplayName  = "DB: ",
+		.OptionName   = L"-db",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[DBX] = {
-		.DisplayName = "DBX",
+		.DisplayName  = "DBX:",
+		.OptionName   = L"-dbx",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE1,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[DBT] = {
-		.DisplayName = "DBT",
+		.DisplayName = "DBT:",
+		.OptionName   = L"-dbt",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE2,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[MOK] = {
-		.DisplayName = "MOK",
+		.DisplayName  = "MOK:",
+		.OptionName   = L"-mok",
 		.VariableName = L"MokList",
 		.VariableGuid = &gEfiShimLockGuid,
 	}
@@ -84,16 +91,15 @@ EFI_STATUS EFIAPI efi_main(
 	CONST UINT32 Attributes = EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_RUNTIME_ACCESS |
 		EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, Append;
-	EFI_STATUS Status, SetStatus;
+	EFI_STATUS Status;
 	EFI_TIME Time;
-	UINTN i;
+	UINTN i, NumPKs;
 	INTN Argc, Type, Sel;
 	MOSBY_CRED Cred;
 	CHAR8 DbSubject[80], PkSubject[80];
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
 	MOSBY_LIST List;
 
-	ConsoleReset();
 	RecallPrint(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
 	gBaseImageHandle = BaseImageHandle;
 	gRT->GetTime(&Time, NULL);
@@ -107,7 +113,7 @@ EFI_STATUS EFIAPI efi_main(
 	Status = ArgSplit(gBaseImageHandle, &Argc, &Argv);
 	if (Status == EFI_SUCCESS) {
 		ArgvCopy = Argv;
-		while (Argc > 1 && ArgvCopy[1][0] == L'-') {
+		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-t") == 0) {
 				TestMode = TRUE;
 				ArgvCopy += 1;
@@ -116,21 +122,42 @@ EFI_STATUS EFIAPI efi_main(
 				gOptionSilent = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-h") == 0) {
+				Print(L"Usage: Mosby [-i] [-h] [-s] [-v] [-{var} <file>] [-{var} <file>] [...]\n");
+				Print(L"       Supported {var} values: pk, kek, db, dbx, dbt, mok\n");
+				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
-				Print(L"\nThis version includes:\n");
-				for (i = 0; i < List.Size; i++)
-					Print(L"o %a:\t%a\n\tFrom %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
-						List.Entry[i].Description, List.Entry[i].Url);
+				for (i = 0; i < List.Size; i++) {
+					if (List.Entry[i].Description != NULL) {
+						Print(L"o %a %a\n       From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
+							List.Entry[i].Description, List.Entry[i].Url);
+						Print(L"       %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
+					}
+				}
 				goto exit;
 			} else {
-				// Unsupported argument
-				break;
+				for (Type = 0; Type < MAX_TYPES; Type++) {
+					if ((Argc > 2) && StrCmp(ArgvCopy[1], KeyInfo[Type].OptionName) == 0) {
+						if (!SimpleFileExistsByPath(gBaseImageHandle, ArgvCopy[2])) {
+							Status = EFI_NOT_FOUND;
+							ReportErrorAndExit(L"File '%s' does not exist\n", ArgvCopy[2]);
+						}
+						List.Entry[List.Size].Type = Type;
+						List.Entry[List.Size].Path = ArgvCopy[2];
+						List.Size++;
+						ArgvCopy += 2;
+						Argc -= 2;
+						break;
+					}
+				}
+				if (Type >= MAX_TYPES) {
+					Status = EFI_INVALID_PARAMETER;
+					ReportErrorAndExit(L"Unsupported or incomplete parameter: '%s'\n", ArgvCopy[1]);
+				}
 			}
 		}
-		// TODO: Add db, dbx, etc processing
-		// TODO: Make sure only one PK can be provided by the user
 	}
 
 	/* Initialize the random generator and validate the platform */
@@ -181,7 +208,7 @@ EFI_STATUS EFIAPI efi_main(
 				L"",
 				L"Do you want to SELECT an existing Secure Boot signing certificate  ",
 				L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL  ",
-				L"any certificate for your own usage)?                               ",
+				L"an additional certificate for your own usage)?                     ",
 				L"",
 				L"If you don't know what to use, we recommend to GENERATE new signing",
 				L"credentials, so that you will be able to sign your own Secure Boot ",
@@ -222,8 +249,6 @@ EFI_STATUS EFIAPI efi_main(
 		if (List.Entry[i].Variable.Data != NULL)
 			continue;
 		if (List.Entry[i].Path != NULL && List.Entry[i].Buffer.Data == NULL) {
-			if (!SimpleFileExistsByPath(gBaseImageHandle, List.Entry[i].Path))
-				ReportErrorAndExit(L"File '%s' does not exist\n", List.Entry[i].Path);
 			Status = SimpleFileReadAllByPath(gBaseImageHandle, List.Entry[i].Path,
 				&List.Entry[i].Buffer.Size, (VOID**)&List.Entry[i].Buffer.Data);
 			if (EFI_ERROR(Status))
@@ -263,8 +288,12 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* Generate a keyless PK cert if none was specified */
-	for (i = 0; i < List.Size && List.Entry[i].Type != PK; i++);
-	if (i == List.Size) {
+	for (i = 0, NumPKs = 0; i < List.Size; i++)
+		if (List.Entry[i].Type == PK)
+			NumPKs++;
+	if (NumPKs >= 2)
+		RecallPrint(L"WARNING: More than one PK was specified. Only the first will be used.");
+	if (NumPKs == 0) {
 		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
 			Status = EFI_OUT_OF_RESOURCES;
 			ReportErrorAndExit(L"List size is too small\n");
@@ -303,16 +332,17 @@ EFI_STATUS EFIAPI efi_main(
 			if (List.Entry[i].Type != Type)
 				continue;
 			if (List.Entry[i].Description != NULL)
-				RecallPrint(L"Installing %a:\t%a\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
+				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
-				RecallPrint(L"Installing %a:\tfrom %s\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
-			SetStatus = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
+				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
+			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
 				Attributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0),
 				List.Entry[i].Variable.Size, List.Entry[i].Variable.Data);
-			if (EFI_ERROR(SetStatus)) {
-				RecallPrint(L"Failed to set Secure Boot variable: %r\n", SetStatus);
-				Status = SetStatus;
-			}
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
+			// Make sure we only ever process one PK
+			if (List.Entry[i].Type == PK)
+				break;
 			Append = TRUE;
 		}
 	}

@@ -17,7 +17,7 @@ declare -A source=(
 
 # From https://uefi.org/revocationlistfile.
 # Needs to be updated manually on DBX update since Microsoft stupidly decided to
-# hardcode the EFI_TIME timestamp of the authenticated list updates to 2010.03.06
+# hardcode the EFI_TIME timestamp of ALL authenticated list updates to 2010.03.06
 # instead of using the actual timestamp of when they created the variables.
 declare -A archdate=(
   [x64]='2023.05.09'

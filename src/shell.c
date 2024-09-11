@@ -37,7 +37,8 @@ EFI_STATUS ArgSplit(
 	INTN i, Count = 1;
 	EFI_STATUS Status;
 	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
-	CHAR16 *Start;
+	CHAR16 *LoadOptions;
+	BOOLEAN OpenQuote;
 
 	*Argc = 0;
 
@@ -47,31 +48,47 @@ EFI_STATUS ArgSplit(
 		return Status;
 	}
 
-	for (i = 0; i < LoadedImage->LoadOptionsSize; i += 2) {
-		CHAR16 *c = (CHAR16 *)(LoadedImage->LoadOptions + i);
-		if (*c == L' ' && *(c+1) != '\0') {
+	LoadOptions = (CHAR16 *)LoadedImage->LoadOptions;
+	OpenQuote = FALSE;
+	for (i = 0; i < LoadedImage->LoadOptionsSize / 2; i++) {
+		if (LoadOptions[i] == L'"')
+			OpenQuote = !OpenQuote;
+		else if (!OpenQuote && LoadOptions[i] == L' ' &&
+			LoadOptions[i + 1] != ' ' && LoadOptions[i + 1] != '\0')
 			(*Argc)++;
-		}
 	}
 
-	(*Argc)++;	// We counted spaces, so add one for initial
+	(*Argc)++;	// We counted parameters, so add one for initial
 
 	*Argv = AllocatePool(*Argc * sizeof(*Argv));
 	if (*Argv == NULL)
 		return EFI_OUT_OF_RESOURCES;
 
 	(*Argv)[0] = (CHAR16 *)LoadedImage->LoadOptions;
-	for (i = 0; i < LoadedImage->LoadOptionsSize; i += 2) {
-		CHAR16 *c = (CHAR16 *)(LoadedImage->LoadOptions + i);
-		if (*c == L' ') {
-			*c = L'\0';
-			if (*(c + 1) == '\0')
+	OpenQuote = FALSE;
+	for (i = 0; i < LoadedImage->LoadOptionsSize / 2 - 1; i++) {
+		if (OpenQuote) {
+			if (LoadOptions[i] == L'"') {
+				OpenQuote = FALSE;
+				LoadOptions[i] = L'\0';
+				// If we are closing a quote with an empty parameter, remove that parameter
+				if (&LoadOptions[i] == (*Argv)[Count - 1])
+					Count--;
+			}
+		} else if (LoadOptions[i] == L' ' && LoadOptions[i + 1] != L' ') {
+			LoadOptions[i] = L'\0';
+			if (LoadOptions[i + 1] == L'"') {
+				OpenQuote = TRUE;
+				LoadOptions[++i] = L'\0';
+			}
+			if (LoadOptions[i + 1] == L'\0')
 				// Strip trailing space
 				break;
-			Start = c + 1;
-			(*Argv)[Count++] = Start;
-		}
+			(*Argv)[Count++] = &LoadOptions[i + 1];
+		} else if (LoadOptions[i] == L' ')
+			LoadOptions[i] = L'\0';
 	}
+	*Argc = Count;
 
 	return EFI_SUCCESS;
 }

@@ -91,7 +91,7 @@ EFI_STATUS ConsolePrintBoxAt(
 )
 {
 	INTN i;
-	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 	UINTN Rows, Cols;
 	CHAR16 *Line;
 
@@ -196,8 +196,9 @@ VOID ConsolePrintBox(
 )
 {
 	EFI_SIMPLE_TEXT_OUTPUT_MODE SavedConsoleMode;
-	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 	CopyMem(&SavedConsoleMode, Console->Mode, sizeof(SavedConsoleMode));
+	Console->ClearScreen(Console);
 	Console->EnableCursor(Console, FALSE);
 	Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
 
@@ -219,7 +220,7 @@ INTN ConsoleSelect(
 )
 {
 	EFI_SIMPLE_TEXT_OUTPUT_MODE SavedConsoleMode;
-	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 	EFI_INPUT_KEY k;
 	INTN Selector;
 	INTN SelectorLines = CountLines(Selectors);
@@ -265,6 +266,7 @@ INTN ConsoleSelect(
 	}
 
 	CopyMem(&SavedConsoleMode, Console->Mode, sizeof(SavedConsoleMode));
+	Console->ClearScreen(Console);
 	Console->EnableCursor(Console, FALSE);
 	Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
 
@@ -367,7 +369,7 @@ VOID ConsoleError(
 
 VOID ConsoleReset(VOID)
 {
-	SIMPLE_TEXT_OUTPUT_INTERFACE *Console = gST->ConOut;
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 
 	Console->Reset(Console, TRUE);
 	// Set mode 0 - required to be 80x25

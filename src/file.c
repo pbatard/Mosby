@@ -36,7 +36,7 @@
 STATIC EFI_STATUS GeneratePath(
 	IN CONST CHAR16* Name,
 	IN CONST EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
-	OUT EFI_DEVICE_PATH **Path,
+	OUT EFI_DEVICE_PATH_PROTOCOL **Path,
 	OUT CHAR16 **PathName)
 {
 	UINTN PathLen;
@@ -94,7 +94,7 @@ EFI_STATUS SimpleFileOpenByHandle(
 )
 {
 	EFI_STATUS Status;
-	EFI_FILE_IO_INTERFACE *Drive;
+	EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Drive;
 	EFI_FILE_HANDLE Root;
 
 	Status = gBS->HandleProtocol(DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&Drive);
@@ -123,7 +123,7 @@ EFI_STATUS SimpleFileOpen(
 	EFI_STATUS Status;
 	EFI_HANDLE Device;
 	EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
-	EFI_DEVICE_PATH *LoadPath = NULL;
+	EFI_DEVICE_PATH_PROTOCOL *LoadPath = NULL;
 	CHAR16 *PathName = NULL;
 
 	Status = gBS->HandleProtocol(Image, &gEfiLoadedImageProtocolGuid, (VOID**)&LoadedImage);
@@ -302,7 +302,7 @@ EFI_STATUS SimpleVolumeSelector(
 		EFI_FILE_SYSTEM_INFO *FsInfo = (VOID *)Buffer;
 		EFI_FILE_HANDLE Root;
 		CHAR16 *Name;
-		EFI_FILE_IO_INTERFACE *Drive;
+		EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Drive;
 
 		Status = gBS->HandleProtocol(VolumeHandles[i], &gEfiSimpleFileSystemProtocolGuid, (VOID**)&Drive);
 		if (EFI_ERROR(Status) || Drive == NULL)
