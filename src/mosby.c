@@ -42,42 +42,97 @@ STATIC struct {
 	EFI_GUID *VariableGuid;
 } KeyInfo[MAX_TYPES] = {
 	[PK] = {
-		.DisplayName  = "PK: ",
+		.DisplayName  = "PK:  ",
 		.OptionName   = L"-pk",
 		.VariableName = EFI_PLATFORM_KEY_NAME,
 		.VariableGuid = &gEfiGlobalVariableGuid,
 	},
 	[KEK] = {
-		.DisplayName  = "KEK:",
+		.DisplayName  = "KEK: ",
 		.OptionName   = L"-kek",
 		.VariableName = EFI_KEY_EXCHANGE_KEY_NAME,
 		.VariableGuid = &gEfiGlobalVariableGuid,
 	},
 	[DB] = {
-		.DisplayName  = "DB: ",
+		.DisplayName  = "DB:  ",
 		.OptionName   = L"-db",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[DBX] = {
-		.DisplayName  = "DBX:",
+		.DisplayName  = "DBX: ",
 		.OptionName   = L"-dbx",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE1,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[DBT] = {
-		.DisplayName = "DBT:",
+		.DisplayName = "DBT: ",
 		.OptionName   = L"-dbt",
 		.VariableName = EFI_IMAGE_SECURITY_DATABASE2,
 		.VariableGuid = &gEfiImageSecurityDatabaseGuid,
 	},
 	[MOK] = {
-		.DisplayName  = "MOK:",
+		.DisplayName  = "MOK: ",
 		.OptionName   = L"-mok",
 		.VariableName = L"MokList",
 		.VariableGuid = &gEfiShimLockGuid,
+	},
+	[SBAT] = {
+		.DisplayName  = "SBAT:",
+		.OptionName   = L"-sbat",
+		.VariableName = L"SbatLevel",
+		.VariableGuid = &gEfiShimLockGuid,
 	}
 };
+
+STATIC EFI_STATUS ReadVariable(
+	IN CHAR16 *VariableName,
+	IN EFI_GUID *VendorGuid,
+	IN OUT UINTN *DataSize,
+	OUT VOID **Data
+)
+{
+	EFI_STATUS Status;
+	
+	*DataSize = 0;
+	*Data = NULL;
+	Status = gRT->GetVariable(VariableName, VendorGuid, NULL, DataSize, NULL);
+	if (EFI_ERROR(Status) && Status != EFI_BUFFER_TOO_SMALL)
+		return Status;
+	// +2 to ensure that we have NUL terminators always
+	*Data = AllocateZeroPool(*DataSize + 2);
+	if (*Data == NULL)
+		return EFI_OUT_OF_RESOURCES;
+
+	return gRT->GetVariable(VariableName, VendorGuid, NULL, DataSize, *Data);
+}
+
+STATIC UINT32 GetSBatVersion(
+	IN CHAR8 *SBat,
+	IN UINTN SBatSize
+)
+{
+	UINT32 i, v, m;
+
+	if (SBatSize < 17)
+		goto error;
+	if (SBat[0] != 's' || SBat[1] != 'b' || SBat[2] != 'a' || SBat[3] != 't' || SBat[4] != ',')
+		goto error;
+	for (i = 5; i < SBatSize && SBat[i] != ',' && SBat[i] != '\n'; i++);
+	if (SBat[i++] != ',' || SBat[i] != '2')
+		goto error;
+	v = 0;
+	for (m = 1000000000; m > 0; m /= 10, i++) {
+		if (SBat[i] < '0' || SBat[i] > '9')
+			goto error;
+		v += (SBat[i] - '0') * m;
+	}
+	return v;
+
+error:
+	RecallPrint(L"ERROR: Unexpected SBAT data\n");
+	return 0;
+}
 
 /*
  * Application entry-point
@@ -87,22 +142,17 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	// TODO: MOK may need different options
-	CONST UINT32 Attributes = EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_RUNTIME_ACCESS |
-		EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, Append;
 	EFI_STATUS Status;
 	EFI_TIME Time;
-	UINTN i, NumPKs;
-	INTN Argc, Type, Sel;
+	UINTN i, NumPKs, Size;
+	INTN Argc, Type, Sel, LastSBat;
 	MOSBY_CRED Cred;
-	CHAR8 DbSubject[80], PkSubject[80];
+	CHAR8 DbSubject[80], PkSubject[80], *SBat, *SBatLine;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
 	MOSBY_LIST List;
 
-	RecallPrint(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
 	gBaseImageHandle = BaseImageHandle;
-	gRT->GetTime(&Time, NULL);
 
 	/* Initialize the base entry list */
 	Status = InitializeList(&List);
@@ -123,18 +173,38 @@ EFI_STATUS EFIAPI efi_main(
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-i] [-h] [-s] [-v] [-{var} <file>] [-{var} <file>] [...]\n");
-				Print(L"       Supported {var} values: pk, kek, db, dbx, dbt, mok\n");
+				Print(L"Usage: Mosby [-i] [-h] [-s] [-v] [-var <file>] [-var <file>] [...]\n");
+				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
+				Print(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
+				Print(L"Embedded data:\n");
 				for (i = 0; i < List.Size; i++) {
 					if (List.Entry[i].Description != NULL) {
-						Print(L"o %a %a\n       From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
+						Print(L"o %a %a\n        From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
 							List.Entry[i].Description, List.Entry[i].Url);
-						Print(L"       %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
+						Print(L"        %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
 					}
+				}
+				if (ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat) == EFI_SUCCESS) {
+					Print(L"\nCurrent system SBAT:\n");
+					for (SBatLine = SBat; SBatLine[0] != '\0'; ) {
+						for (i = 0; ; i++) {
+							if (SBatLine[i] == '\n') {
+								SBatLine[i] = '\0';
+								Print(L"%a\n", SBatLine);
+								SBatLine = &SBatLine[i + 1];
+								break;
+							} else if (SBatLine[i] == '\0') {
+								Print(L"%a\n", SBatLine);
+								SBatLine = &SBatLine[i];
+								break;
+							}
+						}
+					}
+					SafeFree(SBat);
 				}
 				goto exit;
 			} else {
@@ -254,9 +324,42 @@ EFI_STATUS EFIAPI efi_main(
 			if (EFI_ERROR(Status))
 				goto exit;
 		}
-		Status = PopulateAuthVar(&List.Entry[i]);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to create variable - Aborting\n");
+		if (List.Entry[i].Type == SBAT) {
+			List.Entry[i].Flags = USE_BUFFER;
+			List.Entry[i].Attrs = UEFI_VAR_NV_BS;
+		} else {
+			Status = PopulateAuthVar(&List.Entry[i]);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to create variable - Aborting\n");
+		}
+	}
+
+	/* Find out if we need to update the SBAT */
+	LastSBat = -1;
+	for (i = 0; i < List.Size; i++) {
+		if (List.Entry[i].Type != SBAT)
+			continue;
+		// Override internal SBAT if one was provided by the user
+		if (LastSBat >= 0)
+			List.Entry[LastSBat].Flags |= NO_INSTALL;
+		LastSBat = i;
+	}
+	if (LastSBat >= 0) {
+		UINT32 SystemSBatVer = 0, InstallSBatVer;
+		InstallSBatVer = GetSBatVersion((CHAR8*)List.Entry[LastSBat].Buffer.Data, List.Entry[LastSBat].Buffer.Size);
+		if (InstallSBatVer == 0)
+			goto exit;
+		Status = ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat);
+		if (Status == EFI_SUCCESS) 
+			SystemSBatVer = GetSBatVersion(SBat, Size);
+		if (TestMode)
+			Print(L"Provided SBAT: %d, System SBAT: %d\n", InstallSBatVer, SystemSBatVer);
+		if (InstallSBatVer <= SystemSBatVer) {
+			// TODO: Allow override
+			RecallPrint(L"Not installing SBAT since this system's SBAT is either the same or newer\n");
+			List.Entry[LastSBat].Flags |= NO_INSTALL;
+		}
+		SafeFree(SBat);
 	}
 
 	/* Generate DB credentials if requested */
@@ -268,6 +371,9 @@ EFI_STATUS EFIAPI efi_main(
 		i = List.Size;
 		RecallPrint(L"Generating Secure Boot signing credentials...\n");
 		List.Entry[i].Type = DB;
+		Status = gRT->GetTime(&Time, NULL);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to get time - Aborting\n");
 		AsciiSPrint(DbSubject, sizeof(DbSubject), "%a [%04d.%02d.%02d]",
 			MOSBY_CRED_NAME, Time.Year, Time.Month, Time.Day);
 		List.Entry[i].Description = DbSubject;
@@ -279,6 +385,7 @@ EFI_STATUS EFIAPI efi_main(
 			FreeCredentials(&Cred);
 			goto exit;
 		}
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
@@ -288,9 +395,13 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* Generate a keyless PK cert if none was specified */
-	for (i = 0, NumPKs = 0; i < List.Size; i++)
-		if (List.Entry[i].Type == PK)
+	for (i = 0, NumPKs = 0; i < List.Size; i++) {
+		if (List.Entry[i].Type == PK) {
 			NumPKs++;
+			if (NumPKs > 1)
+				List.Entry[i].Flags |= NO_INSTALL;
+		}
+	}
 	if (NumPKs >= 2)
 		RecallPrint(L"WARNING: More than one PK was specified. Only the first will be used.");
 	if (NumPKs == 0) {
@@ -300,6 +411,11 @@ EFI_STATUS EFIAPI efi_main(
 		}
 		RecallPrint(L"Generating PK certificate...\n");
 		List.Entry[i].Type = PK;
+		if (!GenDBCred) {
+			Status = gRT->GetTime(&Time, NULL);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to get time - Aborting\n");
+		}
 		AsciiSPrint(PkSubject, sizeof(PkSubject), "Mosby Generated PK [%04d.%02d.%02d]",
 			Time.Year, Time.Month, Time.Day);
 		List.Entry[i].Description = PkSubject;
@@ -312,8 +428,9 @@ EFI_STATUS EFIAPI efi_main(
 			goto exit;
 		}
 		// PK must be signed
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 		Status = SignToAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
-			Attributes, &List.Entry[i].Variable, &Cred);
+			List.Entry[i].Attrs, &List.Entry[i].Variable, &Cred);
 		FreeCredentials(&Cred);
 		if (EFI_ERROR(Status)) {
 			SafeFree(List.Entry[i].Variable.Data);
@@ -322,27 +439,25 @@ EFI_STATUS EFIAPI efi_main(
 		List.Size++;
 	}
 
-	/* Install the variables, making sure that we finish with the PK. */
-	// Since We have a DeleteSecureBootVariables(), we might as well call it.
+	/* EDK2 provides a DeleteSecureBootVariables(), so we might as well call it. */
 	DeleteSecureBootVariables();
+
+	/* Install the variables, making sure that we finish with the PK. */
 	Status = EFI_NOT_FOUND;
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
 		Append = FALSE;
 		for (i = 0; i < List.Size; i++) {
-			if (List.Entry[i].Type != Type)
+			if (List.Entry[i].Type != Type || List.Entry[i].Flags & NO_INSTALL)
 				continue;
 			if (List.Entry[i].Description != NULL)
 				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
 				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
-			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
-				Attributes | (Append ? EFI_VARIABLE_APPEND_WRITE : 0),
-				List.Entry[i].Variable.Size, List.Entry[i].Variable.Data);
+			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, List.Entry[i].Attrs,
+					(List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size : List.Entry[i].Variable.Size,
+					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
 			if (EFI_ERROR(Status))
 				ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
-			// Make sure we only ever process one PK
-			if (List.Entry[i].Type == PK)
-				break;
 			Append = TRUE;
 		}
 	}

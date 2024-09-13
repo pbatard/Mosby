@@ -72,6 +72,15 @@
 /* FreePool() replacement, that NULLs the freed pointer. */
 #define SafeFree(p)                 do { FreePool(p); p = NULL; } while(0)
 
+/* Variable attributes */
+#define UEFI_VAR_NV_BS              (EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS)
+#define UEFI_VAR_NV_BS_RT           (UEFI_VAR_NV_BS | EFI_VARIABLE_RUNTIME_ACCESS)
+#define UEFI_VAR_NV_BS_RT_TIMEAUTH  (UEFI_VAR_NV_BS_RT | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS)
+
+/* Flags */
+#define USE_BUFFER                  1
+#define NO_INSTALL                  2
+
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
 
@@ -83,6 +92,7 @@ enum {
 	DBX,
 	DBT,
 	MOK,
+	SBAT,
 	MAX_TYPES
 };
 
@@ -101,6 +111,8 @@ typedef struct {
 /* Mosby installable entry */
 typedef struct {
 	UINT8 Type;
+	BOOLEAN Flags;
+	UINT32 Attrs;
 	CHAR16 *Path;
 	CHAR8 *Url; 
 	CHAR8 *Description;

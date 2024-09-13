@@ -1,3 +1,4 @@
-*.sh     eol=lf
-*.patch  binary
-Makefile eol=lf
+*.patch         binary
+*.sh            eol=lf
+Makefile        eol=lf
+sbat_level.txt  eol=lf

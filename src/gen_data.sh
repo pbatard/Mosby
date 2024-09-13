@@ -1,5 +1,5 @@
 #!/bin/env bash
-# This script generates the C source for the data we want to embed in Mosby.
+# This script generates the C source for the data we embed in Mosby.
 
 # The binaries we want to embedd and their URLs
 declare -A source=(
@@ -13,6 +13,9 @@ declare -A source=(
   [dbx_ia32.bin]='https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin'
   [dbx_aa64.bin]='https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin'
   [dbx_arm.bin]='https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin'
+  # Shim does not provide an SBatLevel.txt we can download, so we use our own:
+  # https://github.com/rhboot/shim/issues/685
+  [sbat_level.txt]='https://github.com/pbatard/Mosby/raw/main/sbat_level.txt'
 )
 
 # From https://uefi.org/revocationlistfile.
@@ -70,13 +73,26 @@ cat << EOF
 EOF
 
 for file in "${!source[@]}"; do
-  curl -s -L ${source[${file}]} -o ${file}
+  # '-o' tries to use an override from the current repo
+  if [[ "$1" == "-o" &&  -f ../${file} ]]; then
+    cp ../${file} .
+  else
+    curl -s -L ${source[${file}]} -o ${file}
+  fi
   echo "// From ${source[${file}]}"
   type=${file%%_*}
   if [ "$type" = "dbx" ]; then
     arch=${file%\.*}
     arch=${arch##*_}
     description[${file}]="DBX for ${archname[$arch]} [${archdate[$arch]}]"
+  elif [ "$type" = "sbat" ]; then
+    while IFS=, read -r c1 c2 c3; do
+      if [ "$c1" = "sbat" ]; then
+        date="[${c3:0:4}.${c3:4:2}.${c3:6:2}]"
+        break
+      fi
+    done < ${file}
+    description[${file}]="SbatLevel.txt $date"
   else
     description[${file}]="$(openssl x509 -noout -subject -in ${file} | sed -n '/^subject/s/^.*CN = //p')"
   fi
@@ -100,10 +116,18 @@ for file in "${!source[@]}"; do
   if [ "$type" = "DBX" ]; then
     echo "${archguard[$arch]}"
   fi
-  echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
   echo "	List->Entry[List->Size].Type = ${type};"
+  if [[ "$type" = "SBAT" ]]; then
+    echo "	List->Entry[List->Size].Flags = USE_BUFFER;"
+  fi
+  if [[ "$type" = "SBAT" || "$type" = "MOK" ]]; then
+    echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"
+  else
+    echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;"
+  fi
   echo "	List->Entry[List->Size].Path = L\"${file}\";"
   echo "	List->Entry[List->Size].Url = \"${source[${file}]}\";"
+  echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
   echo "	List->Entry[List->Size].Buffer.Data = ${data};"
   echo "	List->Entry[List->Size].Buffer.Size = ${data}_len;"
   echo "	List->Size++;"

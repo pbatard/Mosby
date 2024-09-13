@@ -1,0 +1,4 @@
+sbat,1,2024010900
+shim,4
+grub,3
+grub.debian,4

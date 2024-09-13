@@ -252,8 +252,8 @@ EFI_STATUS SimpleFileReadAll(
 	}
 
 	// Might use memory mapped, so align up to nearest page.
-	// Also + 1 so the data is always NUL terminated.
-	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size + 1, 4096));
+	// Also + 2 so the data is always NUL terminated.
+	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size + 2, 4096));
 	if (*Buffer == NULL) {
 		Status = EFI_OUT_OF_RESOURCES;
 		ReportErrorAndExit(L"Failed to allocate buffer of size %d\n", *Size);
