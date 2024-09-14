@@ -17,7 +17,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
 #include "mosby.h"
+#include "ssp_var_defs.h"
 
 // From https://go.microsoft.com/fwlink/?LinkId=321185
 unsigned char kek_ms1_cer[] = {
@@ -675,9 +677,9 @@ unsigned char sbat_level_txt[] = {
   0x73, 0x62, 0x61, 0x74, 0x2c, 0x31, 0x2c, 0x32, 0x30, 0x32, 0x34, 0x30,
   0x31, 0x30, 0x39, 0x30, 0x30, 0x0a, 0x73, 0x68, 0x69, 0x6d, 0x2c, 0x34,
   0x0a, 0x67, 0x72, 0x75, 0x62, 0x2c, 0x33, 0x0a, 0x67, 0x72, 0x75, 0x62,
-  0x2e, 0x64, 0x65, 0x62, 0x69, 0x61, 0x6e, 0x2c, 0x34, 0x0a
+  0x2e, 0x64, 0x65, 0x62, 0x69, 0x61, 0x6e, 0x2c, 0x34
 };
-unsigned int sbat_level_txt_len = 46;
+unsigned int sbat_level_txt_len = 45;
 
 // From https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin
 unsigned char dbx_arm_bin[] = {
@@ -4337,12 +4339,11 @@ EFI_STATUS InitializeList(
 	IN OUT MOSBY_LIST *List
 )
 {
-	if (MOSBY_MAX_LIST_SIZE < 11)
+	if (MOSBY_MAX_LIST_SIZE < 13)
 		return EFI_INVALID_PARAMETER;
 	ZeroMem(List, sizeof(MOSBY_LIST));
 	List->Entry[List->Size].Type = KEK;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"kek_ms1.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?LinkId=321185";
 	List->Entry[List->Size].Description = "Microsoft Corporation KEK CA 2011";
 	List->Entry[List->Size].Buffer.Data = kek_ms1_cer;
@@ -4350,7 +4351,6 @@ EFI_STATUS InitializeList(
 	List->Size++;
 	List->Entry[List->Size].Type = KEK;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"kek_ms2.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239775";
 	List->Entry[List->Size].Description = "Microsoft Corporation KEK 2K CA 2023";
 	List->Entry[List->Size].Buffer.Data = kek_ms2_cer;
@@ -4358,7 +4358,6 @@ EFI_STATUS InitializeList(
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"db_ms3.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239776";
 	List->Entry[List->Size].Description = "Windows UEFI CA 2023";
 	List->Entry[List->Size].Buffer.Data = db_ms3_cer;
@@ -4366,15 +4365,21 @@ EFI_STATUS InitializeList(
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"db_ms2.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=321194";
 	List->Entry[List->Size].Description = "Microsoft Corporation UEFI CA 2011";
 	List->Entry[List->Size].Buffer.Data = db_ms2_cer;
 	List->Entry[List->Size].Buffer.Size = db_ms2_cer_len;
 	List->Size++;
+	List->Entry[List->Size].Type = SSPV;
+	List->Entry[List->Size].Flags = USE_BUFFER;
+	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
+	List->Entry[List->Size].Url = "https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h";
+	List->Entry[List->Size].Description = "SkuSiPolicyVersion [2023.04.29]";
+	List->Entry[List->Size].Buffer.Data = SkuSiPolicyVersion;
+	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyVersion);
+	List->Size++;
 	List->Entry[List->Size].Type = DB;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"db_ms1.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=321192";
 	List->Entry[List->Size].Description = "Microsoft Windows Production PCA 2011";
 	List->Entry[List->Size].Buffer.Data = db_ms1_cer;
@@ -4383,16 +4388,22 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Type = SBAT;
 	List->Entry[List->Size].Flags = USE_BUFFER;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
-	List->Entry[List->Size].Path = L"sbat_level.txt";
 	List->Entry[List->Size].Url = "https://github.com/pbatard/Mosby/raw/main/sbat_level.txt";
 	List->Entry[List->Size].Description = "SbatLevel.txt [2024.01.09]";
 	List->Entry[List->Size].Buffer.Data = sbat_level_txt;
 	List->Entry[List->Size].Buffer.Size = sbat_level_txt_len;
 	List->Size++;
+	List->Entry[List->Size].Type = SSPU;
+	List->Entry[List->Size].Flags = USE_BUFFER;
+	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
+	List->Entry[List->Size].Url = "https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h";
+	List->Entry[List->Size].Description = "SkuSiPolicyUpdateSigners [2023.04.29]";
+	List->Entry[List->Size].Buffer.Data = SkuSiPolicyUpdateSigners;
+	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyUpdateSigners);
+	List->Size++;
 #if defined (_M_ARM) || defined(__arm__)
 	List->Entry[List->Size].Type = DBX;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"dbx_arm.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin";
 	List->Entry[List->Size].Description = "DBX for ARM (32 bit) [2023.05.09]";
 	List->Entry[List->Size].Buffer.Data = dbx_arm_bin;
@@ -4401,7 +4412,6 @@ EFI_STATUS InitializeList(
 #endif
 	List->Entry[List->Size].Type = DB;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"db_ms4.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239872";
 	List->Entry[List->Size].Description = "Microsoft UEFI CA 2023";
 	List->Entry[List->Size].Buffer.Data = db_ms4_cer;
@@ -4410,7 +4420,6 @@ EFI_STATUS InitializeList(
 #if defined (_M_ARM64) || defined(__aarch64__)
 	List->Entry[List->Size].Type = DBX;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"dbx_aa64.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin";
 	List->Entry[List->Size].Description = "DBX for ARM (64 bit) [2023.05.09]";
 	List->Entry[List->Size].Buffer.Data = dbx_aa64_bin;
@@ -4420,7 +4429,6 @@ EFI_STATUS InitializeList(
 #if defined(_M_X64) || defined(__x86_64__)
 	List->Entry[List->Size].Type = DBX;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"dbx_x64.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin";
 	List->Entry[List->Size].Description = "DBX for x86 (64 bit) [2023.05.09]";
 	List->Entry[List->Size].Buffer.Data = dbx_x64_bin;
@@ -4430,7 +4438,6 @@ EFI_STATUS InitializeList(
 #if defined(_M_IX86) || defined(__i386__)
 	List->Entry[List->Size].Type = DBX;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
-	List->Entry[List->Size].Path = L"dbx_ia32.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin";
 	List->Entry[List->Size].Description = "DBX for x86 (32 bit) [2023.05.09]";
 	List->Entry[List->Size].Buffer.Data = dbx_ia32_bin;

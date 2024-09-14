@@ -86,10 +86,8 @@ EFI_STATUS InitializePki(
 	// See if the default RNG works. If not try to use the UEFI platform's RNG.
 	if (!RAND_status()) {
 		prov = uefi_rand_init(NULL, TestMode);
-		if (prov == NULL || !RAND_status()) {
-			Status = EFI_UNSUPPORTED;
-			ReportErrorAndExit(L"Failed to access a random number generator\n");
-		}
+		if (prov == NULL || !RAND_status())
+			Abort(EFI_UNSUPPORTED, L"Failed to access a random number generator\n");
 	}
 
 	// Try to use the loaded image's DevicePath (of the DeviceHandle) as our seed since
@@ -266,10 +264,8 @@ EFI_STATUS SaveCredentials(
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Buffer = AllocateZeroPool(Size);
-	if (Buffer == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate PFX buffer\n");
-	}
+	if (Buffer == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate PFX buffer\n");
 	Ptr = Buffer;	// i2d_###() modifies the pointer...
 	Size = (INTN)i2d_PKCS12(p12, &Ptr);
 	if (Size < 0)
@@ -300,10 +296,8 @@ EFI_STATUS SaveCredentials(
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Buffer = AllocateZeroPool(Size);
-	if (Buffer == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate DER buffer\n");
-	}
+	if (Buffer == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate DER buffer\n");
 	Ptr = Buffer;	// i2d_###() modifies the pointer
 	Size = (INTN)i2d_X509(Credentials->Cert, &Ptr);
 	if (Size < 0)
@@ -370,10 +364,8 @@ EFI_STATUS CertToAuthVar(
 	if (Size <= 0)
 		goto exit;
 	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size);
-	if (Esl == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate ESL\n");
-	}
+	if (Esl == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate ESL\n");
 
 	CopyGuid(&Esl->SignatureType, &gEfiCertX509Guid);
 	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size;
@@ -537,10 +529,8 @@ EFI_STATUS SignToAuthVar(
 	for (i = 0; i < ARRAY_SIZE(SignableElement); i++)
 		SignDataSize += SignableElement[i].Size;
 	SignData = AllocateZeroPool(SignDataSize);
-	if (SignData == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate buffer to sign\n");
-	}
+	if (SignData == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate buffer to sign\n");
 	Offset = 0;
 	for (i = 0; i < ARRAY_SIZE(SignableElement); i++) {
 		CopyMem(&SignData[Offset], SignableElement[i].Ptr, SignableElement[i].Size);
@@ -563,10 +553,8 @@ EFI_STATUS SignToAuthVar(
 
 	// Create the signed variable
 	SignedVariable = AllocateZeroPool(Variable->Size + SignatureSize);
-	if (SignedVariable == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate buffer for signed variable\n");
-	}
+	if (SignedVariable == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate buffer for signed variable\n");
 	CopyMem(SignedVariable, Variable->Data, OFFSET_OF_AUTHINFO2_CERT_DATA);
 	SignedVariable->AuthInfo.Hdr.dwLength = OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData) + SignatureSize;
 	Ptr = SignedVariable->AuthInfo.CertData;

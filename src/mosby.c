@@ -25,6 +25,10 @@
 #include "variables.h"
 #include "version.h"
 
+/* Convert a Windows version to an integer */
+#define WINVER_TO_UINT64(ver) (((UINT64)(ver)[0] << 48) | ((UINT64)(ver)[1] << 32) | \
+                               ((UINT64)(ver)[2] << 16) | ((UINT64)(ver)[3]))
+
 /* Globals */
 EFI_HANDLE gBaseImageHandle = NULL;
 
@@ -33,6 +37,10 @@ STATIC BOOLEAN gOptionSilent = FALSE;
 /* MokList GUID - Not yet defined in EDK2 */
 STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
+
+/* Windows GUID - Not yet defined in EDK2 */
+STATIC EFI_GUID gEfiWindowsGuid =
+	{ 0x77FA9ABD, 0x0359, 0x4D32, { 0xBD, 0x60, 0x28, 0xF4, 0xE7, 0x8F, 0x78, 0x4B } };
 
 /* Attributes for the "key" types we support */
 STATIC struct {
@@ -82,6 +90,18 @@ STATIC struct {
 		.OptionName   = L"-sbat",
 		.VariableName = L"SbatLevel",
 		.VariableGuid = &gEfiShimLockGuid,
+	},
+	[SSPU] = {
+		.DisplayName  = "SSPU:",
+		.OptionName   = L"-sspu",
+		.VariableName = L"SkuSiPolicyUpdateSigners",
+		.VariableGuid = &gEfiWindowsGuid,
+	},
+	[SSPV] = {
+		.DisplayName  = "SSPV:",
+		.OptionName   = L"-sspv",
+		.VariableName = L"SkuSiPolicyVersion",
+		.VariableGuid = &gEfiWindowsGuid,
 	}
 };
 
@@ -134,6 +154,24 @@ error:
 	return 0;
 }
 
+STATIC INTN RemoveDuplicates(
+	UINT8 Type,
+	MOSBY_LIST *List
+)
+{
+	INTN i, LastEntry;
+
+	LastEntry = -1;
+	for (i = 0; i < List->Size; i++) {
+		if (List->Entry[i].Type != Type)
+			continue;
+		if (LastEntry >= 0)
+			List->Entry[LastEntry].Flags |= NO_INSTALL;
+		LastEntry = i;
+	}
+	return LastEntry;
+}
+
 /*
  * Application entry-point
  */
@@ -145,8 +183,10 @@ EFI_STATUS EFIAPI efi_main(
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, Append;
 	EFI_STATUS Status;
 	EFI_TIME Time;
-	UINTN i, NumPKs, Size;
-	INTN Argc, Type, Sel, LastSBat;
+	UINTN i, Size;
+	UINT16* SystemSSPV = NULL;
+	UINT32 SystemSBatVer, InstallSBatVer;
+	INTN Argc, Type, Sel, LastEntry;
 	MOSBY_CRED Cred;
 	CHAR8 DbSubject[80], PkSubject[80], *SBat, *SBatLine;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
@@ -210,10 +250,8 @@ EFI_STATUS EFIAPI efi_main(
 			} else {
 				for (Type = 0; Type < MAX_TYPES; Type++) {
 					if ((Argc > 2) && StrCmp(ArgvCopy[1], KeyInfo[Type].OptionName) == 0) {
-						if (!SimpleFileExistsByPath(gBaseImageHandle, ArgvCopy[2])) {
-							Status = EFI_NOT_FOUND;
-							ReportErrorAndExit(L"File '%s' does not exist\n", ArgvCopy[2]);
-						}
+						if (!SimpleFileExistsByPath(gBaseImageHandle, ArgvCopy[2]))
+							Abort(EFI_NOT_FOUND, L"File '%s' does not exist\n", ArgvCopy[2]);
 						List.Entry[List.Size].Type = Type;
 						List.Entry[List.Size].Path = ArgvCopy[2];
 						List.Size++;
@@ -222,10 +260,8 @@ EFI_STATUS EFIAPI efi_main(
 						break;
 					}
 				}
-				if (Type >= MAX_TYPES) {
-					Status = EFI_INVALID_PARAMETER;
-					ReportErrorAndExit(L"Unsupported or incomplete parameter: '%s'\n", ArgvCopy[1]);
-				}
+				if (Type >= MAX_TYPES)
+					Abort(EFI_INVALID_PARAMETER, L"Unsupported or incomplete parameter: '%s'\n", ArgvCopy[1]);
 			}
 		}
 	}
@@ -261,12 +297,10 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* If we have an existing cert for a previously generated DB credential, try to reuse it */
-	UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%s.crt", MOSBY_CRED_NAME);
+	UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%a.crt", MOSBY_CRED_NAME);
 	if (SimpleFileExistsByPath(gBaseImageHandle, MosbyKeyPath)) {
-		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
-			Status = EFI_OUT_OF_RESOURCES;
-			ReportErrorAndExit(L"List size is too small\n");
-		}
+		if (List.Size >= MOSBY_MAX_LIST_SIZE)
+			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		RecallPrint(L"Reusing existing %s certificate...\n", MosbyKeyPath);
 		List.Entry[List.Size].Type = DB;
 		List.Entry[List.Size].Path = MosbyKeyPath;
@@ -324,50 +358,65 @@ EFI_STATUS EFIAPI efi_main(
 			if (EFI_ERROR(Status))
 				goto exit;
 		}
-		if (List.Entry[i].Type == SBAT) {
-			List.Entry[i].Flags = USE_BUFFER;
-			List.Entry[i].Attrs = UEFI_VAR_NV_BS;
-		} else {
-			Status = PopulateAuthVar(&List.Entry[i]);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to create variable - Aborting\n");
+		switch (List.Entry[i].Type) {
+			case SBAT:
+			case SSPU:
+			case SSPV:
+				List.Entry[i].Flags = USE_BUFFER;
+				List.Entry[i].Attrs = UEFI_VAR_NV_BS;
+				break;
+			default:
+				Status = PopulateAuthVar(&List.Entry[i]);
+				if (EFI_ERROR(Status))
+					ReportErrorAndExit(L"Failed to create variable - Aborting\n");
+				break;
 		}
 	}
 
 	/* Find out if we need to update the SBAT */
-	LastSBat = -1;
-	for (i = 0; i < List.Size; i++) {
-		if (List.Entry[i].Type != SBAT)
-			continue;
-		// Override internal SBAT if one was provided by the user
-		if (LastSBat >= 0)
-			List.Entry[LastSBat].Flags |= NO_INSTALL;
-		LastSBat = i;
+	LastEntry = RemoveDuplicates(SBAT, &List);
+	if (LastEntry < 0)
+		Abort(EFI_NO_MAPPING, L"Internal error\n");
+	SystemSBatVer = 0;
+	InstallSBatVer = GetSBatVersion((CHAR8*)List.Entry[LastEntry].Buffer.Data, List.Entry[LastEntry].Buffer.Size);
+	if (InstallSBatVer == 0)
+		Abort(EFI_NO_MAPPING, L"Internal error\n");
+	Status = ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat);
+	if (Status == EFI_SUCCESS) 
+		SystemSBatVer = GetSBatVersion(SBat, Size);
+	if (TestMode)
+		Print(L"Provided SBAT: %d, System SBAT: %d\n", InstallSBatVer, SystemSBatVer);
+	if (InstallSBatVer <= SystemSBatVer) {
+		// TODO: Allow override
+		RecallPrint(L"Not installing SBAT since this system's SBAT is either the same or newer\n");
+		List.Entry[LastEntry].Flags |= NO_INSTALL;
 	}
-	if (LastSBat >= 0) {
-		UINT32 SystemSBatVer = 0, InstallSBatVer;
-		InstallSBatVer = GetSBatVersion((CHAR8*)List.Entry[LastSBat].Buffer.Data, List.Entry[LastSBat].Buffer.Size);
-		if (InstallSBatVer == 0)
-			goto exit;
-		Status = ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat);
-		if (Status == EFI_SUCCESS) 
-			SystemSBatVer = GetSBatVersion(SBat, Size);
-		if (TestMode)
-			Print(L"Provided SBAT: %d, System SBAT: %d\n", InstallSBatVer, SystemSBatVer);
-		if (InstallSBatVer <= SystemSBatVer) {
-			// TODO: Allow override
-			RecallPrint(L"Not installing SBAT since this system's SBAT is either the same or newer\n");
-			List.Entry[LastSBat].Flags |= NO_INSTALL;
-		}
-		SafeFree(SBat);
+	SafeFree(SBat);
+
+	/* Find out if we need to update the SSP's */
+	LastEntry = RemoveDuplicates(SSPU, &List);
+	if (LastEntry < 0)
+		Abort(EFI_NO_MAPPING, L"Internal error\n");
+	LastEntry = RemoveDuplicates(SSPV, &List);
+	if (LastEntry < 0)
+		Abort(EFI_NO_MAPPING, L"Internal error\n");
+	Size = 4 * sizeof(UINT16);
+	Status = ReadVariable(L"SkuSiPolicyVersion", &gEfiWindowsGuid, &Size, (VOID**)&SystemSSPV);
+	if (Status == EFI_SUCCESS && Size != 4 * sizeof(UINT16))
+		Abort(EFI_UNSUPPORTED, L"Unexpected SSPV variable size\n");
+	if (Status == EFI_SUCCESS &&
+		WINVER_TO_UINT64(SystemSSPV) >= (WINVER_TO_UINT64((UINT16*)List.Entry[LastEntry].Buffer.Data))) {
+		// TODO: Allow override
+		RecallPrint(L"Not installing SSP variables since this system's SSPV is either the same or newer\n");
+		List.Entry[LastEntry].Flags |= NO_INSTALL;
+		List.Entry[RemoveDuplicates(SSPU, &List)].Flags |= NO_INSTALL;
 	}
+	FreePool(SystemSSPV);
 
 	/* Generate DB credentials if requested */
 	if (GenDBCred) {
-		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
-			Status = EFI_OUT_OF_RESOURCES;
-			ReportErrorAndExit(L"List size is too small\n");
-		}
+		if (List.Size >= MOSBY_MAX_LIST_SIZE)
+			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		i = List.Size;
 		RecallPrint(L"Generating Secure Boot signing credentials...\n");
 		List.Entry[i].Type = DB;
@@ -395,21 +444,12 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* Generate a keyless PK cert if none was specified */
-	for (i = 0, NumPKs = 0; i < List.Size; i++) {
-		if (List.Entry[i].Type == PK) {
-			NumPKs++;
-			if (NumPKs > 1)
-				List.Entry[i].Flags |= NO_INSTALL;
-		}
-	}
-	if (NumPKs >= 2)
-		RecallPrint(L"WARNING: More than one PK was specified. Only the first will be used.");
-	if (NumPKs == 0) {
-		if (List.Size >= MOSBY_MAX_LIST_SIZE) {
-			Status = EFI_OUT_OF_RESOURCES;
-			ReportErrorAndExit(L"List size is too small\n");
-		}
+	LastEntry = RemoveDuplicates(PK, &List);
+	if (LastEntry < 0) {
+		if (List.Size >= MOSBY_MAX_LIST_SIZE)
+			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		RecallPrint(L"Generating PK certificate...\n");
+		i = List.Size;
 		List.Entry[i].Type = PK;
 		if (!GenDBCred) {
 			Status = gRT->GetTime(&Time, NULL);

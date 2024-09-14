@@ -93,6 +93,8 @@ enum {
 	DBT,
 	MOK,
 	SBAT,
+	SSPU,
+	SSPV,
 	MAX_TYPES
 };
 

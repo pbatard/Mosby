@@ -23,8 +23,9 @@
 
 #define NOSEL 0x7fffffff
 
-/* Error reporting macro */
+/* Error reporting macros */
 #define ReportErrorAndExit(...) do { RecallPrint(__VA_ARGS__); goto exit; } while(0)
+#define Abort(s, ...)           do { Status = s; RecallPrint(__VA_ARGS__); goto exit; } while(0) 
 
 EFI_INPUT_KEY ConsoleGetKeystroke(VOID);
 

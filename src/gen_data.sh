@@ -13,15 +13,18 @@ declare -A source=(
   [dbx_ia32.bin]='https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin'
   [dbx_aa64.bin]='https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin'
   [dbx_arm.bin]='https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin'
-  # Shim does not provide an SBatLevel.txt we can download, so we use our own:
-  # https://github.com/rhboot/shim/issues/685
+  # Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
+  # See: https://github.com/rhboot/shim/issues/685
   [sbat_level.txt]='https://github.com/pbatard/Mosby/raw/main/sbat_level.txt'
+  # Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't understand the
+  # importance of letting everyone access CRITICAL PIECES OF A PUBLIC SECURITY TRUST CHAIN!
+  [ssp_var_defs.h]='https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h'
 )
 
 # From https://uefi.org/revocationlistfile.
 # Needs to be updated manually on DBX update since Microsoft stupidly decided to
 # hardcode the EFI_TIME timestamp of ALL authenticated list updates to 2010.03.06
-# instead of using the actual timestamp of when they created the variables.
+# instead of using the actual timestamp of when they create the variables...
 declare -A archdate=(
   [x64]='2023.05.09'
   [ia32]='2023.05.09'
@@ -46,6 +49,11 @@ declare -A archguard=(
   [riscv64]='#if defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))'
 )
 
+declare -A ssp_varname=(
+  [SSPU]='SkuSiPolicyUpdateSigners'
+  [SSPV]='SkuSiPolicyVersion'
+)
+
 declare -A description=()
 
 cat << EOF
@@ -68,9 +76,19 @@ cat << EOF
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
 #include "mosby.h"
+#include "ssp_var_defs.h"
 
 EOF
+
+# Get the SSP date from the last GitHub commit of ssp_var_defs.h
+ssp_date_url="${source[ssp_var_defs.h]}"
+ssp_date_url="${ssp_date_url#*main/}"
+ssp_date_url="${ssp_date_url//\//%2F}"
+ssp_date_url="https://api.github.com/repos/rhboot/shim/commits?path=${ssp_date_url}&page=1&per_page=1"
+ssp_date="$(curl -s -L ${ssp_date_url} | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
+ssp_date=${ssp_date//-/.}
 
 for file in "${!source[@]}"; do
   # '-o' tries to use an override from the current repo
@@ -78,6 +96,9 @@ for file in "${!source[@]}"; do
     cp ../${file} .
   else
     curl -s -L ${source[${file}]} -o ${file}
+  fi
+  if [[ "${file}" = "ssp_var_defs.h" ]]; then
+    continue
   fi
   echo "// From ${source[${file}]}"
   type=${file%%_*}
@@ -100,6 +121,10 @@ for file in "${!source[@]}"; do
   echo ""
   rm ${file}
 done
+
+# Add a dummy entry for the extra SSPV
+source[sspv_var_defs.h]=${source[ssp_var_defs.h]}
+
 echo "EFI_STATUS InitializeList("
 echo "	IN OUT MOSBY_LIST *List"
 echo ")"
@@ -115,21 +140,28 @@ for file in "${!source[@]}"; do
   arch=${arch##*_}
   if [ "$type" = "DBX" ]; then
     echo "${archguard[$arch]}"
+  elif [ "$type" = "SSP" ]; then
+    type="SSPU"
   fi
   echo "	List->Entry[List->Size].Type = ${type};"
-  if [[ "$type" = "SBAT" ]]; then
+  if [[ "$type" = "SBAT" || "$type" = "SSPU" || "$type" = "SSPV" ]]; then
     echo "	List->Entry[List->Size].Flags = USE_BUFFER;"
   fi
-  if [[ "$type" = "SBAT" || "$type" = "MOK" ]]; then
+  if [[ "$type" = "SBAT" || "$type" = "MOK" || "$type" = "SSPU" || "$type" = "SSPV" ]]; then
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"
   else
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;"
   fi
-  echo "	List->Entry[List->Size].Path = L\"${file}\";"
   echo "	List->Entry[List->Size].Url = \"${source[${file}]}\";"
-  echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
-  echo "	List->Entry[List->Size].Buffer.Data = ${data};"
-  echo "	List->Entry[List->Size].Buffer.Size = ${data}_len;"
+  if [[ "$type" = "SSPU" || "$type" = "SSPV" ]]; then
+    echo "	List->Entry[List->Size].Description = \"${ssp_varname[${type}]} [${ssp_date}]\";"
+    echo "	List->Entry[List->Size].Buffer.Data = ${ssp_varname[${type}]};"
+    echo "	List->Entry[List->Size].Buffer.Size = sizeof(${ssp_varname[${type}]});"
+  else
+    echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
+    echo "	List->Entry[List->Size].Buffer.Data = ${data};"
+    echo "	List->Entry[List->Size].Buffer.Size = ${data}_len;"
+  fi
   echo "	List->Size++;"
   if [ "$type" = "DBX" ]; then
     echo "#endif"

@@ -67,10 +67,8 @@ STATIC EFI_STATUS GeneratePath(
 	PathLen += StrLen(Name) + 1;
 	*PathName = AllocateZeroPool(PathLen * sizeof(CHAR16));
 
-	if (*PathName == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate path buffer\n");
-	}
+	if (*PathName == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate path buffer\n");
 
 	StrCpyS(*PathName, PathLen, DevicePathString);
 
@@ -171,10 +169,8 @@ EFI_STATUS SimpleDirReadAllByHandle(
 	Status = File->GetInfo(File, &gEfiFileInfoGuid, &Size, Info);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"Failed to get file info: %r\n", Status);
-	if ((Info->Attribute & EFI_FILE_DIRECTORY) == 0) {
-		Status = EFI_INVALID_PARAMETER;
-		ReportErrorAndExit(L"Not a directory: '%s'\n", Name);
-	}
+	if ((Info->Attribute & EFI_FILE_DIRECTORY) == 0)
+		Abort(EFI_INVALID_PARAMETER, L"Not a directory: '%s'\n", Name);
 	Size = 0;
 	*Count = 0;
 	for (;;) {
@@ -246,18 +242,14 @@ EFI_STATUS SimpleFileReadAll(
 
 	*Size = Info->FileSize;
 
-	if (*Size > MAX_FILE_SIZE) {
-		Status = EFI_UNSUPPORTED;
-		ReportErrorAndExit(L"File size %d is too large\n", *Size);
-	}
+	if (*Size > MAX_FILE_SIZE)
+		Abort(EFI_UNSUPPORTED, L"File size %d is too large\n", *Size);
 
 	// Might use memory mapped, so align up to nearest page.
 	// Also + 2 so the data is always NUL terminated.
 	*Buffer = AllocateZeroPool(ALIGN_VALUE(*Size + 2, 4096));
-	if (*Buffer == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate buffer of size %d\n", *Size);
-	}
+	if (*Buffer == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate buffer of size %d\n", *Size);
 	Status = File->Read(File, Size, *Buffer);
 
 exit:
@@ -291,10 +283,8 @@ EFI_STATUS SimpleVolumeSelector(
 		return EFI_NOT_FOUND;
 
 	Entries = AllocateZeroPool(sizeof(CHAR16 *) * (Count + 1));
-	if (Entries == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate volume selector buffer\n");
-	}
+	if (Entries == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate volume selector buffer\n");
 
 	for (i = 0; i < Count; i++) {
 		UINT8 Buffer[4096];
@@ -324,10 +314,8 @@ EFI_STATUS SimpleVolumeSelector(
 
 		if (Name == NULL || StrLen(Name) == 0 || StrCmp(Name, L" ") == 0) {
 			Name = ConvertDevicePathToText(DevicePathFromHandle(VolumeHandles[i]), FALSE, FALSE);
-			if (Name == NULL) {
-				Status = EFI_OUT_OF_RESOURCES;
-				ReportErrorAndExit(L"Failed to convert device path\n");
-			}
+			if (Name == NULL)
+				Abort(EFI_OUT_OF_RESOURCES, L"Failed to convert device path\n");
 		}
 
 		Entries[i] = AllocateZeroPool((StrLen(Name) + 2) * sizeof(CHAR16));
@@ -379,10 +367,8 @@ EFI_STATUS SimpleDirFilter(
 	Offset = StrLen(Filter);
 	NewFilter = AllocateZeroPool((StrLen(Filter) + 1) * sizeof(CHAR16));
 
-	if (NewFilter == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate filter buffer\n");
-	}
+	if (NewFilter == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate filter buffer\n");
 
 	// Just in case EFI ever stops writeable strings
 	StrCpyS(NewFilter, StrLen(Filter) + 1, Filter);
@@ -430,10 +416,8 @@ EFI_STATUS SimpleDirFilter(
 		*Result = AllocateZeroPool(((*Count) + 1) * sizeof(VOID *));
 	else
 		*Result = AllocateZeroPool(2 * sizeof(VOID *));
-	if (*Result == NULL) {
-		Status = EFI_OUT_OF_RESOURCES;
-		ReportErrorAndExit(L"Failed to allocate filter result buffer\n");
-	}
+	if (*Result == NULL)
+		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate filter result buffer\n");
 
 	*Count = 0;
 	Ptr = Next = *Entries;
