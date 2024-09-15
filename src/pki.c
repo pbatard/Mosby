@@ -438,7 +438,14 @@ EFI_STATUS PopulateAuthVar(
 		if (HeaderSize + sizeof(EFI_SIGNATURE_LIST) > Entry->Buffer.Size)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
 		Esl = (EFI_SIGNATURE_LIST*)&Entry->Buffer.Data[HeaderSize];
-		if (Esl->SignatureListSize != Entry->Buffer.Size - HeaderSize)
+		// A signature db update can contain multiple successive ESLs
+		while ((UINTN)Esl < (UINTN)&Entry->Buffer.Data[Entry->Buffer.Size]) {
+			if (Esl->SignatureListSize > Entry->Buffer.Size - HeaderSize)
+				ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
+			Esl = (EFI_SIGNATURE_LIST*)&((UINT8*)Esl)[Esl->SignatureListSize];
+		}
+		// Last ESL should end on our buffer
+		if ((UINTN)Esl != (UINTN)&Entry->Buffer.Data[Entry->Buffer.Size])
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
 		Entry->Variable.Size = Entry->Buffer.Size;
 		Entry->Variable.Data = SignedEsl;
