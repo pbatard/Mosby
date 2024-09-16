@@ -38,8 +38,8 @@ STATIC BOOLEAN gOptionSilent = FALSE;
 STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
 
-/* Windows GUID - Not yet defined in EDK2 */
-STATIC EFI_GUID gEfiWindowsGuid =
+/* Microsoft GUID - Not yet defined in EDK2 */
+STATIC EFI_GUID gEfiMicrosoftGuid =
 	{ 0x77FA9ABD, 0x0359, 0x4D32, { 0xBD, 0x60, 0x28, 0xF4, 0xE7, 0x8F, 0x78, 0x4B } };
 
 /* Attributes for the "key" types we support */
@@ -95,13 +95,13 @@ STATIC struct {
 		.DisplayName  = "SSPU:",
 		.OptionName   = L"-sspu",
 		.VariableName = L"SkuSiPolicyUpdateSigners",
-		.VariableGuid = &gEfiWindowsGuid,
+		.VariableGuid = &gEfiMicrosoftGuid,
 	},
 	[SSPV] = {
 		.DisplayName  = "SSPV:",
 		.OptionName   = L"-sspv",
 		.VariableName = L"SkuSiPolicyVersion",
-		.VariableGuid = &gEfiWindowsGuid,
+		.VariableGuid = &gEfiMicrosoftGuid,
 	}
 };
 
@@ -180,7 +180,7 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, Append;
+	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, Append;
 	EFI_STATUS Status;
 	EFI_TIME Time;
 	UINTN i, Size;
@@ -212,9 +212,13 @@ EFI_STATUS EFIAPI efi_main(
 				gOptionSilent = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-u") == 0) {
+				UpdateMode = TRUE;
+				ArgvCopy += 1;
+				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-i] [-h] [-s] [-v] [-var <file>] [-var <file>] [...]\n");
-				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
+				Print(L"Usage: Mosby [-h] [-i] [-s] [-u] [-v] [-var <file>] [-var <file>] [...]\n");
+				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
 				Print(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
@@ -265,6 +269,9 @@ EFI_STATUS EFIAPI efi_main(
 			}
 		}
 	}
+
+	if (UpdateMode)
+		goto process_binaries;
 
 	/* Initialize the random generator and validate the platform */
 	Status = InitializePki(TestMode);
@@ -348,6 +355,7 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
+process_binaries:
 	/* Process binaries that have been provided to the application */
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Variable.Data != NULL)
@@ -359,10 +367,13 @@ EFI_STATUS EFIAPI efi_main(
 				goto exit;
 		}
 		switch (List.Entry[i].Type) {
+			case SSPV:
+				if (List.Entry[i].Buffer.Size != 4 * sizeof(UINT16))
+					Abort(EFI_INVALID_PARAMETER, L"Invalid SSPV size\n");
+				// Fall through
 			case SBAT:
 			case SSPU:
-			case SSPV:
-				List.Entry[i].Flags = USE_BUFFER;
+				List.Entry[i].Flags = USE_BUFFER | ALLOW_UPDATE;
 				List.Entry[i].Attrs = UEFI_VAR_NV_BS;
 				break;
 			default:
@@ -401,7 +412,7 @@ EFI_STATUS EFIAPI efi_main(
 	if (LastEntry < 0)
 		Abort(EFI_NO_MAPPING, L"Internal error\n");
 	Size = 4 * sizeof(UINT16);
-	Status = ReadVariable(L"SkuSiPolicyVersion", &gEfiWindowsGuid, &Size, (VOID**)&SystemSSPV);
+	Status = ReadVariable(L"SkuSiPolicyVersion", &gEfiMicrosoftGuid, &Size, (VOID**)&SystemSSPV);
 	if (Status == EFI_SUCCESS && Size != 4 * sizeof(UINT16))
 		Abort(EFI_UNSUPPORTED, L"Unexpected SSPV variable size\n");
 	if (Status == EFI_SUCCESS &&
@@ -412,6 +423,9 @@ EFI_STATUS EFIAPI efi_main(
 		List.Entry[RemoveDuplicates(SSPU, &List)].Flags |= NO_INSTALL;
 	}
 	FreePool(SystemSSPV);
+
+	if (UpdateMode)
+		goto install;
 
 	/* Generate DB credentials if requested */
 	if (GenDBCred) {
@@ -482,18 +496,22 @@ EFI_STATUS EFIAPI efi_main(
 	/* EDK2 provides a DeleteSecureBootVariables(), so we might as well call it. */
 	DeleteSecureBootVariables();
 
+install:
 	/* Install the variables, making sure that we finish with the PK. */
 	Status = EFI_NOT_FOUND;
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
-		Append = FALSE;
+		Append = (UpdateMode && Type == DBX);
 		for (i = 0; i < List.Size; i++) {
 			if (List.Entry[i].Type != Type || List.Entry[i].Flags & NO_INSTALL)
+				continue;
+			if (UpdateMode && !(List.Entry[i].Flags & ALLOW_UPDATE))
 				continue;
 			if (List.Entry[i].Description != NULL)
 				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
 				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
-			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, List.Entry[i].Attrs,
+			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
+					List.Entry[i].Attrs | (Append ? EFI_VARIABLE_APPEND_WRITE : 0),
 					(List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size : List.Entry[i].Variable.Size,
 					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
 			if (EFI_ERROR(Status))

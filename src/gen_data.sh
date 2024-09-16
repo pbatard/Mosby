@@ -146,7 +146,9 @@ for file in "${!source[@]}"; do
   fi
   echo "	List->Entry[List->Size].Type = ${type};"
   if [[ "$type" == "SBAT" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
-    echo "	List->Entry[List->Size].Flags = USE_BUFFER;"
+    echo "	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;"
+  elif [[ "$type" == "DBX" ]]; then
+    echo "	List->Entry[List->Size].Flags = ALLOW_UPDATE;"
   fi
   if [[ "$type" == "SBAT" || "$type" == "MOK" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"

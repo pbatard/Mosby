@@ -22,7 +22,7 @@
 
 #define MOSBY_SETUP_MODE_ATTEMPTS   L"SetupModeAttempts"
 
-/* GUID we'll use to store variables */
+/* GUID we use to store variables */
 STATIC EFI_GUID gMosbyVariableGuid =
 	{ 0x26A35749, 0x477E, 0x41A4, { 0xA9, 0x0A, 0x19, 0xC3, 0xAF, 0xEA, 0x85, 0x40 } };
 
@@ -36,7 +36,15 @@ L"ERROR: Setup Mode is not enabled",
 	L"Enabling 'Setup Mode' usually requires going into your UEFI     ",
 	L"firmware settings and manually changing the Secure Boot options.",
 	L"",
+	L"",
 	L"Do you want to reboot to enable 'Setup Mode'?",
+	L"",
+	L"",
+	L"Note: If you don't want to reinstall all certificates and        ",
+	L"databases, but just ensure that the Secure Boot vulnerabilities, ",
+	L"that were known at the time this application was released, are   ",
+	L"being properly revoked, you can select 'No' here and run Mosby   ",
+	L"again with the '-u' option, which doesn't require 'Setup Mode'.  ",
 	NULL
 };
 STATIC CONST CHAR16* AttemptMessage2[] = {
@@ -146,6 +154,7 @@ EFI_STATUS CheckSetupMode(
 
 	Size = sizeof(SetupMode);
 	Status = gRT->GetVariable(EFI_SETUP_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
+
 	if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE) {
 		RecallPrint(L"ERROR: Setup Mode not enabled (Attempt #%d)\n", SetupModeAttempts + 1);
 		// Unfortunately, while EDK2 makes DeletePlatformKey() publicly available, which

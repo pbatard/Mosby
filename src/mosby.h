@@ -80,6 +80,7 @@
 /* Flags */
 #define USE_BUFFER                  1
 #define NO_INSTALL                  2
+#define ALLOW_UPDATE                4
 
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;

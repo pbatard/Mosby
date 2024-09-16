@@ -449,6 +449,7 @@ EFI_STATUS PopulateAuthVar(
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
 		Entry->Variable.Size = Entry->Buffer.Size;
 		Entry->Variable.Data = SignedEsl;
+		Entry->Flags |= ALLOW_UPDATE;
 		Entry->Buffer.Data = NULL;	// Don't double free our data
 		Status = EFI_SUCCESS;
 		goto exit;

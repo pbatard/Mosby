@@ -4969,7 +4969,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_ms2_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = SSPV;
-	List->Entry[List->Size].Flags = USE_BUFFER;
+	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
 	List->Entry[List->Size].Path = L"sspv_var_defs.h";
 	List->Entry[List->Size].Url = "https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h";
@@ -4978,7 +4978,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyVersion);
 	List->Size++;
 	List->Entry[List->Size].Type = SBAT;
-	List->Entry[List->Size].Flags = USE_BUFFER;
+	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
 	List->Entry[List->Size].Path = L"sbat_level.txt";
 	List->Entry[List->Size].Url = "https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt";
@@ -4988,6 +4988,7 @@ EFI_STATUS InitializeList(
 	List->Size++;
 #if defined (_M_ARM) || defined(__arm__)
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_arm.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin";
@@ -5005,7 +5006,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_ms4_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = SSPU;
-	List->Entry[List->Size].Flags = USE_BUFFER;
+	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
 	List->Entry[List->Size].Path = L"sspu_var_defs.h";
 	List->Entry[List->Size].Url = "https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h";
@@ -5014,6 +5015,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyUpdateSigners);
 	List->Size++;
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_svn_all.bin";
 	List->Entry[List->Size].Url = "https://github.com/pbatard/Mosby/raw/main/data/dbx_update_svn_all.bin";
@@ -5023,6 +5025,7 @@ EFI_STATUS InitializeList(
 	List->Size++;
 #if defined (_M_ARM64) || defined(__aarch64__)
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_aa64.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin";
@@ -5032,6 +5035,7 @@ EFI_STATUS InitializeList(
 	List->Size++;
 #endif
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_2024_all.bin";
 	List->Entry[List->Size].Url = "https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin";
@@ -5041,6 +5045,7 @@ EFI_STATUS InitializeList(
 	List->Size++;
 #if defined(_M_X64) || defined(__x86_64__)
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_x64.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin";
@@ -5051,6 +5056,7 @@ EFI_STATUS InitializeList(
 #endif
 #if defined(_M_IX86) || defined(__i386__)
 	List->Entry[List->Size].Type = DBX;
+	List->Entry[List->Size].Flags = ALLOW_UPDATE;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_ia32.bin";
 	List->Entry[List->Size].Url = "https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin";
