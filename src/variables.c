@@ -21,13 +21,14 @@
 #include "variables.h"
 
 #define MOSBY_SETUP_MODE_ATTEMPTS   L"SetupModeAttempts"
+#define MOSBY_LAST_INSTALL_TIME     L"LastInstallTime"
 
 /* GUID we use to store variables */
 STATIC EFI_GUID gMosbyVariableGuid =
 	{ 0x26A35749, 0x477E, 0x41A4, { 0xA9, 0x0A, 0x19, 0xC3, 0xAF, 0xEA, 0x85, 0x40 } };
 
 /* Various messages we display to the user as they attempt to enter Setup Mode */
-STATIC CONST CHAR16* AttemptMessage1[] = {
+STATIC CONST CHAR16 *AttemptMessage1[] = {
 L"ERROR: Setup Mode is not enabled",
 	L"",
 	L"This platform is not in Secure Boot 'Setup Mode', which is      ",
@@ -37,17 +38,18 @@ L"ERROR: Setup Mode is not enabled",
 	L"firmware settings and manually changing the Secure Boot options.",
 	L"",
 	L"",
+	L"Note: If you don't want to reinstall all certificates and       ",
+	L"databases, but just ensure that the Secure Boot vulnerabilities,",
+	L"that were known at the time this application was released, are  ",
+	L"being properly revoked, you can select 'No' here and run Mosby  ",
+	L"again with the '-u' option, which doesn't require 'Setup Mode'. ",
+	L"",
+	L"",
 	L"Do you want to reboot to enable 'Setup Mode'?",
 	L"",
-	L"",
-	L"Note: If you don't want to reinstall all certificates and        ",
-	L"databases, but just ensure that the Secure Boot vulnerabilities, ",
-	L"that were known at the time this application was released, are   ",
-	L"being properly revoked, you can select 'No' here and run Mosby   ",
-	L"again with the '-u' option, which doesn't require 'Setup Mode'.  ",
 	NULL
 };
-STATIC CONST CHAR16* AttemptMessage2[] = {
+STATIC CONST CHAR16 *AttemptMessage2[] = {
 	L"ERROR: Setup Mode is not enabled",
 	L"",
 	L"This platform is not in Secure Boot 'Setup Mode', which is      ",
@@ -59,7 +61,7 @@ STATIC CONST CHAR16* AttemptMessage2[] = {
 	L"Do you want to reboot to enable 'Setup Mode'?",
 	NULL
 };
-STATIC CONST CHAR16* AttemptMessage3[] = {
+STATIC CONST CHAR16 *AttemptMessage3[] = {
 	L"ERROR: Setup Mode is still not enabled",
 	L"",
 	L"It appears that you are still having trouble trying to enable   ",
@@ -77,7 +79,7 @@ STATIC CONST CHAR16* AttemptMessage3[] = {
 	L"Do you want to reboot and try to enable 'Setup Mode' once more?",
 	NULL
 };
-STATIC CONST CHAR16* AttemptMessage4[] = {
+STATIC CONST CHAR16 *AttemptMessage4[] = {
 	L"ERROR: Setup Mode is not enabled",
 	L"",
 	L"We are sorry to see that you are having so much trouble trying  ",
@@ -95,6 +97,35 @@ STATIC CONST CHAR16* AttemptMessage4[] = {
 	L"encountering with trying to enable 'Setup Mode'...              ", 
 	L"",
 	L"Do you still want to reboot and try again?",
+	NULL
+};
+STATIC CONST CHAR16 *ExitMessage1[] = {
+	L"",
+	L"Mosby has sucessfully installed the Secure Boot variables.       ",
+	L"",
+	L"You should now reboot into your UEFI firmware settings and make  ",
+	L"sure that Secure Boot is enabled.                                ", 
+	L"",
+	L"IMPORTANT: Please make sure that you keep a copy of the following",
+	L"generated files: 'MosbyKey.pfx', 'MosbyKey.crt', 'MosbyKey.key'. ",
+	L"They are your UNIQUE SECURE BOOT SIGNING KEYS, and you should    ",
+	L"carefully preserve them, so that you can sign UEFI executables.  ",
+	L"",
+	L"Also note that, if these files are present in the same directory ",
+	L"as the application, Mosby will reuse them, thus allowing you to  ",
+	L"reuse the same signing key across different systems.             "
+	L"",
+	L"Do you want to reboot into the UEFI Firmware Settings now?       ",
+	NULL
+};
+STATIC CONST CHAR16 *ExitMessage2[] = {
+	L"",
+	L"Mosby has sucessfully installed the Secure Boot variables.      ",
+	L"",
+	L"You should reboot into your UEFI firmware settings and make sure",
+	L"that Secure Boot is enabled.                                    ",
+	L"",
+	L"Do you want to reboot into the UEFI Firmware Settings now?      ",
 	NULL
 };
 
@@ -130,9 +161,7 @@ STATIC EFI_STATUS SetOsIndication(
 		Attributes, Size, &OsIndications);
 }
 
-EFI_STATUS CheckSetupMode(
-	IN CONST BOOLEAN TestMode
-)
+EFI_STATUS CheckSetupMode(VOID)
 {
 	EFI_STATUS Status;
 	UINT8 SecureBoot = 0, SetupMode = 0, CustomMode = 0, SetupModeAttempts = 0;
@@ -185,7 +214,7 @@ EFI_STATUS CheckSetupMode(
 					Size, &CustomMode);
 			// Try PK deletion, in case it actually happens to work...
 			DisablePKProtection();
-			if ((TestMode ? EFI_ABORTED : DeletePlatformKey()) == EFI_SUCCESS) {
+			if (DeletePlatformKey() == EFI_SUCCESS) {
 				RecallPrint(L"NOTICE: PK deletion successful! Platform should now be in Setup Mode.\n");
 			} else if (IsOsIndicationsSupported(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) && 
 				SetOsIndication(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) == EFI_SUCCESS) {
@@ -196,7 +225,7 @@ EFI_STATUS CheckSetupMode(
 					sizeof(SetupModeAttempts), &SetupModeAttempts);
 			}
 			RecallPrint(L"Rebooting platform...\n");
-			gBS->Stall(TestMode ? 1000000 : 2000000);
+			gBS->Stall(2000000);
 			gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL);
 		} else {
 			RecallPrint(L"Reboot operation cancelled by the user\n");
@@ -206,4 +235,29 @@ EFI_STATUS CheckSetupMode(
 	
 exit:
 	return Status;
+}
+
+VOID ExitNotice(
+	IN CONST BOOLEAN KeysGenerated
+)
+{
+	EFI_TIME Time = { 0 };
+	INTN Sel;
+
+	gRT->GetTime(&Time, NULL);
+	// Store the last installation time, so we can alert the user if they re-run Mosby
+	gRT->SetVariable(MOSBY_LAST_INSTALL_TIME, &gMosbyVariableGuid,
+					EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
+					sizeof(Time), &Time);
+	Sel = ConsoleYesNo(KeysGenerated ? ExitMessage1 : ExitMessage2);
+	RecallPrintRestore();
+	if (Sel == 0) {
+		if (IsOsIndicationsSupported(EFI_OS_INDICATIONS_BOOT_TO_FW_UI))
+			SetOsIndication(EFI_OS_INDICATIONS_BOOT_TO_FW_UI);
+		RecallPrint(L"Rebooting platform...\n");
+		gBS->Stall(2000000);
+		gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL);
+	} else {
+		RecallPrint(L"Reboot operation cancelled by the user\n");
+	}
 }

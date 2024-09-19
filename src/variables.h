@@ -16,6 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-EFI_STATUS CheckSetupMode(
-	IN CONST BOOLEAN TestMode
+EFI_STATUS CheckSetupMode(VOID);
+
+VOID ExitNotice(
+	IN CONST BOOLEAN KeysGenerated
 );

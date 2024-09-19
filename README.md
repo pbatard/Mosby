@@ -28,10 +28,10 @@ The motivations behind this are as follows:
    enabled environment!  
    This application can remedy that.
 2. In 2023, because of the expiration of the certificates listed above, Microsoft introduced
-   one new *KEK* and two new *DB* certificates, that are erefore not be commonly found in your
-   system manufacturer's default key (especially if your system has not received any firmware
-   update since 2024) and that (because a *KEK* can **only** be installed through updates
-   [that are signed by the platform manufacturer](https://uefi.org/specs/UEFI/2.9_A/32_Secure_Boot_and_Driver_Signing.html#enrolling-key-exchange-keys))
+   one new *KEK* and two new *DB* certificates, that are therefore not be commonly found in
+   your system manufacturer's default key (especially if your system has not received any
+   firmware update since 2024) and that (because a *KEK* can **only** be installed through
+   [updates that are signed by the platform manufacturer](https://uefi.org/specs/UEFI/2.9_A/32_Secure_Boot_and_Driver_Signing.html#enrolling-key-exchange-keys))
    cannot be fully updated from the OS itself, even if the OS is Secure Boot compatible or
    comes from Micosoft.  
    This application can remedy that.
@@ -39,9 +39,10 @@ The motivations behind this are as follows:
    [many](https://arstechnica.com/information-technology/2023/03/unkillable-uefi-malware-bypassing-secure-boot-enabled-by-unpatchable-windows-flaw/),
    [many](https://wack0.github.io/dubiousdisk/) vulnerabilities uncovered in the UEFI Windows
    bootloaders, Microsoft is in the process of **completely removing** one of the base DB
-   certificates that it has been using to sign its UEFI executables since 2011.  
-   This application can make sure that this DB certificate is properly removed (as opposed to
-   what will happen if you use the native Secure Boot key restoration from your UEFI
+   certificates (The `Microsoft Windows Production PCA 2011` certificate mentioned above).  
+   **Once Microsoft produces installation media that no longer users this certificate**,
+   this application will make sure that this DB certificate is properly removed (as opposed
+   to what would happen if you use the native Secure Boot key restoration from your UEFI
    firmware).
 4. In 2024, it was disovered that some PC manufacturers [played fast and loose with the
    Primary Key (*PK*) shipped with their hardware](https://arstechnica.com/security/2024/07/secure-boot-is-completely-compromised-on-200-models-from-5-big-device-makers/),
@@ -65,6 +66,11 @@ The motivations behind this are as follows:
    The end result is that it has become a lot more convoluted and daunting than it should
    really be for end-users, to make Secure Boot work in their favour.  
    This application can also remedy that.
+6. Figuring out SBAT, SkuSiPolicy as well as Microsoft's new SVN DBX based revocation updates
+   is currrently a mess, as you need to wade through many different sources to try to ensure
+   that your system is actually up to date with them (because if they aren't, an attacker can
+   easily bypass Secure Boot on your system).  
+   This application can remedy that.
 
 In short, while making sure that all the Secure Boot keys used by your platform are up to
 date, the whole point of this application is to give control of the whole Secure Boot process
@@ -89,7 +95,7 @@ And it does so by making incredibly **easy** to install your own set of Secure B
    make sure that your platform is in *Setup Mode*. Please refer to your manufacturer's
    documentation if you don't know how to enable *Setup Mode*.
 
-4. Boot into the UEFI Shell media you created and type `Mosby` (without any extension). The
+4. Boot into the UEFI Shell media you created and type: `Mosby` (without any extension). The
    executable relevant to your platform will automatically launch and will guide you through
    the installation of the UEFI Secure Boot keys.
 
@@ -99,6 +105,20 @@ And it does so by making incredibly **easy** to install your own set of Secure B
 If needed, you can also provide your own DB/DBX/DBT/KEK/PK/MOK binaries in DER, PEM, ESL or
 signed ESL format, by using something like `-db canonical_ca.cer` to point a Secure Boot
 variable to the data you want to install for it.
+
+## Parameters
+
+* `-h`: Display the application parameters and exit.
+* `-v`: Display the application version and exit.
+* `-i`: Display information about the embedded data installable by the application, as well
+        as the current SBAT data from the system (if SBAT is set).
+* `-s`: Silent option (Removes some of the early and late prompts).
+* `-u`: Update only: Only update the revocation databases, SBAT, and SSPV/SSPU as needed.
+* `-t`: Test mode. Disables some checks and wnables the internal **low security** Random
+        Number Generator, if no other Random Number Generator can be found.
+
+You can also point to files using the `-pk`, `-kek`, `-db`, `-dbx`, `-mok`, `-dbt`, `-sbat`,
+`-sspv` and `-sspu` parameters.
 
 ## Compilation
 
@@ -153,7 +173,7 @@ generator, however because of the algorithm being used, this generator should be
 
 * On Windows, use `signtool.exe` with the `.pfx`. For example, to sign `bootx64.efi`:
 ```
-signtool sign /f MosbyKey.pfx" /fd SHA256 bootx64.efi
+signtool sign /f MosbyKey.pfx /fd SHA256 bootx64.efi
 ```
 
 Note that you can download `signtool.exe` with the command:

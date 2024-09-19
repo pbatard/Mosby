@@ -142,7 +142,8 @@ EFI_STATUS GenerateCredentials(
 	INTN NumLeapDays = 0, i;
 	EVP_PKEY *Key = NULL;
 	X509 *Cert = NULL;
-	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 };
+	UINT16 Year;
+	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 }, Month, Day;
 	time_t Epoch;
 	unsigned int Len;
 
@@ -185,28 +186,38 @@ EFI_STATUS GenerateCredentials(
 
 	// Set certificate validity to MOSBY_VALID_YEARS
 	ASN1_TIME* asn1time = ASN1_TIME_new();
+	// Because of timezones and whatnot, we need to set the start and end times of
+	// the certificate to exactly midnight. May still be off by 1 hour due to DST.
+	EpochToEfiTime(Epoch, &EfiTime);
+	// Easier to store YYYY.MM.DD and zero the struct
+	Year = EfiTime.Year;
+	Month = EfiTime.Month;
+	Day = EfiTime.Day;
+	ZeroMem(&EfiTime, sizeof(EFI_TIME));
+	EfiTime.Year = Year;
+	EfiTime.Month = Month;
+	EfiTime.Day = Day;
+	Epoch = EfiTimeToEpoch(&EfiTime);
 	ASN1_TIME_set(asn1time, Epoch);
 	X509_set1_notBefore(Cert, asn1time);
 
 	// Because we want the certificate expiration to end on the same month & day as
 	// the start date, we need to compute how many leap days there are in-between
-	struct tm tm = { 0 };
-	ASN1_TIME_to_tm(asn1time, &tm);
 	for (i = 0; i < MOSBY_VALID_YEARS; i++) {
-		EfiTime.Year = (UINT16)(1900 + tm.tm_year + i);
+		EfiTime.Year = (UINT16)(Year + i);
 		if (IsLeapYear(&EfiTime)) {
 			if (i != 0 && i != MOSBY_VALID_YEARS - 1)
 				// For years that are neither start or end year
 				NumLeapDays++;
-			else if (i == 0 && tm.tm_mon < 2)
+			else if (i == 0 && Month < 3)
 				// Start year is leap year and start date is before March 1st
 				NumLeapDays++;
-			else if (i == MOSBY_VALID_YEARS - 1 && tm.tm_mon > 1)
+			else if (i == MOSBY_VALID_YEARS - 1 && Month > 2)
 				// End year is leap year and end date is after February 29th
 				NumLeapDays++;
 		}
 	}
-	ASN1_TIME_set(asn1time, time(NULL) + (60 * 60 * 24 * (365 * MOSBY_VALID_YEARS + NumLeapDays) - 1));
+	ASN1_TIME_set(asn1time, Epoch + (60 * 60 * 24 * (365 * MOSBY_VALID_YEARS + NumLeapDays) - 1));
 	X509_set1_notAfter(Cert, asn1time);
 	ASN1_TIME_free(asn1time);
 
@@ -410,7 +421,9 @@ EFI_STATUS PopulateAuthVar(
 	UINTN HeaderSize;
 	CONST UINT8 *Ptr;
 	EFI_SIGNATURE_LIST *Esl = NULL;
+	MOSBY_CRED Cred = { 0 };
 	EFI_VARIABLE_AUTHENTICATION_2 *SignedEsl = NULL;
+	PKCS12 *p12 = NULL;
 	BIO *bio = NULL;
 
 	if (Entry == NULL || Entry->Buffer.Data == NULL)
@@ -468,6 +481,21 @@ EFI_STATUS PopulateAuthVar(
 	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable);
 	if (Status == EFI_SUCCESS)
 		goto exit;
+	BIO_free(bio);	// Can't reuse the bio
+
+	// Check for a PKCS#12 (.pfx) encoded certificate
+	bio = BIO_new_mem_buf(Entry->Buffer.Data, Entry->Buffer.Size);
+	if (bio == NULL)
+		ReportErrorAndExit(L"Failed to create PKCS#12 buffer\n");
+	p12 = d2i_PKCS12_bio(bio, NULL);
+	// Need to read both the key and cert, even if we don't use the key here
+	if (PKCS12_parse(p12, NULL, (EVP_PKEY**)&Cred.Key, (X509**)&Cred.Cert, NULL)) {
+		Status = CertToAuthVar(Cred.Cert, &Entry->Variable);
+		PKCS12_free(p12);
+		FreeCredentials(&Cred);
+		if (Status == EFI_SUCCESS)
+			goto exit;
+	}
 
 	// Check for an unsigned ESL
 	Esl = (EFI_SIGNATURE_LIST*)Entry->Buffer.Data;

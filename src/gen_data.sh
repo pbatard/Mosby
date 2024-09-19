@@ -5,9 +5,13 @@
 declare -A source=(
   [kek_ms1.cer]='https://go.microsoft.com/fwlink/?LinkId=321185'
   [kek_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=2239775'
-  # Revoked by Microsoft. Can't have this if you have dbx_update_2024_all.bin
-  # since the latter adds the former into the DBX database:
-  # [db_ms1.cer]='https://go.microsoft.com/fwlink/?linkid=321192'
+  # db_ms1.cer below is in the process of being revoked by Microsoft. You cannot
+  # have it if you enable dbx_update_2024_all.bin, as the latter adds the former
+  # into the DBX database. However, since, even with the 2024.08 refresh, MS is
+  # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
+  # creds, and the application of KB5025885 is still a massive mess, we have no
+  # choice but to leave the cert below enabled...
+  [db_ms1.cer]='https://go.microsoft.com/fwlink/?linkid=321192'
   [db_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=321194'
   [db_ms3.cer]='https://go.microsoft.com/fwlink/?linkid=2239776'
   [db_ms4.cer]='https://go.microsoft.com/fwlink/?linkid=2239872'
@@ -24,7 +28,7 @@ declare -A source=(
   # Found in %WINDIR%\System32\SecureBootUpdates\ on recent versions of Windows, these are
   # the new DBX updates, that Microsoft are about to apply to all systems... but that they
   # are again not making PUBLICLY AVAILABLE TO EVERYONE!
-  [dbx_update_2024_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin'
+  #[dbx_update_2024_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin'
   [dbx_update_svn_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_svn_all.bin'
 )
 

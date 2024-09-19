@@ -279,7 +279,7 @@ EFI_STATUS EFIAPI efi_main(
 		ReportErrorAndExit(L"ERROR: This platform does not meet the minimum security requirements.\n");
 
 	/* Verify that the platform is in Setup Mode */
-	Status = CheckSetupMode(TestMode);
+	Status = CheckSetupMode();
 	if (EFI_ERROR(Status))
 		goto exit;
 
@@ -342,7 +342,7 @@ EFI_STATUS EFIAPI efi_main(
 					L"",
 					Title,
 					NULL
-				}, L"\\", L".cer|.crt", &List.Entry[List.Size].Path);
+				}, L"\\", L".cer|.crt|.pfx", &List.Entry[List.Size].Path);
 			RecallPrintRestore();
 			if (EFI_ERROR(Status) || !SimpleFileExistsByPath(gBaseImageHandle, List.Entry[List.Size].Path)) {
 				SafeFree(List.Entry[List.Size].Path);
@@ -418,7 +418,7 @@ process_binaries:
 	if (Status == EFI_SUCCESS &&
 		WINVER_TO_UINT64(SystemSSPV) >= (WINVER_TO_UINT64((UINT16*)List.Entry[LastEntry].Buffer.Data))) {
 		// TODO: Allow override
-		RecallPrint(L"Not installing SSP variables since this system's SSPV is either the same or newer\n");
+		RecallPrint(L"Not installing SSP vars since this system's SSPV is either the same or newer\n");
 		List.Entry[LastEntry].Flags |= NO_INSTALL;
 		List.Entry[RemoveDuplicates(SSPU, &List)].Flags |= NO_INSTALL;
 	}
@@ -519,6 +519,9 @@ install:
 			Append = TRUE;
 		}
 	}
+
+	if (!gOptionSilent && !UpdateMode)
+		ExitNotice(GenDBCred);
 
 exit:
 	for (i = 0; i < List.Size; i++)
