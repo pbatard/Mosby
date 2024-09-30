@@ -183,6 +183,7 @@ EFI_STATUS EFIAPI efi_main(
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, Append;
 	EFI_STATUS Status;
 	EFI_TIME Time;
+	UINT8 Set = MOSBY_SET1;
 	UINTN i, Size;
 	UINT16* SystemSSPV = NULL;
 	UINT32 SystemSBatVer, InstallSBatVer;
@@ -204,24 +205,9 @@ EFI_STATUS EFIAPI efi_main(
 	if (Status == EFI_SUCCESS) {
 		ArgvCopy = Argv;
 		while (Argc > 1) {
-			if (StrCmp(ArgvCopy[1], L"-t") == 0) {
-				TestMode = TRUE;
-				ArgvCopy += 1;
-				Argc -= 1;
-			} else if (StrCmp(ArgvCopy[1], L"-s") == 0) {
-				gOptionSilent = TRUE;
-				ArgvCopy += 1;
-				Argc -= 1;
-			} else if (StrCmp(ArgvCopy[1], L"-u") == 0) {
-				UpdateMode = TRUE;
-				ArgvCopy += 1;
-				Argc -= 1;
-			} else if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-h] [-i] [-s] [-u] [-v] [-var <file>] [-var <file>] [...]\n");
+			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
+				Print(L"Usage: Mosby [-h] [-i] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
-				goto exit;
-			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
-				Print(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
 				Print(L"Embedded data:\n");
@@ -251,6 +237,25 @@ EFI_STATUS EFIAPI efi_main(
 					SafeFree(SBat);
 				}
 				goto exit;
+			} else if (StrCmp(ArgvCopy[1], L"-s") == 0) {
+				gOptionSilent = TRUE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-t") == 0) {
+				TestMode = TRUE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-u") == 0) {
+				UpdateMode = TRUE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
+				Print(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
+				goto exit;
+			} else if (StrCmp(ArgvCopy[1], L"-x") == 0) {
+				Set = MOSBY_SET2;
+				ArgvCopy += 1;
+				Argc -= 1;
 			} else {
 				for (Type = 0; Type < MAX_TYPES; Type++) {
 					if ((Argc > 2) && StrCmp(ArgvCopy[1], KeyInfo[Type].OptionName) == 0) {
@@ -503,6 +508,8 @@ install:
 		Append = (UpdateMode && Type == DBX);
 		for (i = 0; i < List.Size; i++) {
 			if (List.Entry[i].Type != Type || List.Entry[i].Flags & NO_INSTALL)
+				continue;
+			if (List.Entry[i].Set != 0 && (List.Entry[i].Set & Set) == 0)
 				continue;
 			if (UpdateMode && !(List.Entry[i].Flags & ALLOW_UPDATE))
 				continue;

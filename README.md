@@ -116,6 +116,9 @@ variable to the data you want to install for it.
 * `-u`: Update only: Only update the revocation databases, SBAT, and SSPV/SSPU as needed.
 * `-t`: Test mode. Disables some checks and wnables the internal **low security** Random
         Number Generator, if no other Random Number Generator can be found.
+* `-x`: Install the Microsoft update that invalidates `Microsoft Windows Production PCA 2011`.
+        You should only use this if you know what you are doing, as you you may not be able
+        to boot or reinstall Windows otherwise. **You have been warned!**
 
 You can also point to files using the `-pk`, `-kek`, `-db`, `-dbx`, `-mok`, `-dbt`, `-sbat`,
 `-sspv` and `-sspu` parameters.

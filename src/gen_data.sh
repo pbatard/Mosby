@@ -9,8 +9,8 @@ declare -A source=(
   # have it if you enable dbx_update_2024_all.bin, as the latter adds the former
   # into the DBX database. However, since, even with the 2024.08 refresh, MS is
   # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
-  # creds, and the application of KB5025885 is still a massive mess, we have no
-  # choice but to leave the cert below enabled...
+  # credentials, and the application of KB5025885 is still a massive mess, we
+  # allow users to install it as part of an XOR set with dbx_update_2024_all.bin.
   [db_ms1.cer]='https://go.microsoft.com/fwlink/?linkid=321192'
   [db_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=321194'
   [db_ms3.cer]='https://go.microsoft.com/fwlink/?linkid=2239776'
@@ -28,8 +28,13 @@ declare -A source=(
   # Found in %WINDIR%\System32\SecureBootUpdates\ on recent versions of Windows, these are
   # the new DBX updates, that Microsoft are about to apply to all systems... but that they
   # are again not making PUBLICLY AVAILABLE TO EVERYONE!
-  #[dbx_update_2024_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin'
+  [dbx_update_2024_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin'
   [dbx_update_svn_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_svn_all.bin'
+)
+
+declare -A exclusive_set=(
+  [db_ms1.cer]='MOSBY_SET1'
+  [dbx_update_2024_all.bin]='MOSBY_SET2'
 )
 
 # Optional description for specific files
@@ -114,7 +119,7 @@ for file in "${!source[@]}"; do
       done < ${file}
       description[${file}]="SbatLevel.txt $date"
     elif [[ "$type" == "db" || "$type" == "kek" ]]; then
-      description[${file}]="$(openssl x509 -noout -subject -in ${file} | sed -n '/^subject/s/^.*CN = //p')"
+      description[${file}]="$(openssl x509 -noout -subject -in ${file} | sed -n '/^subject/s/^.*CN\s*=\s*//p')"
     else
       echo "ERROR: No description for ${file}"
       exit 1
@@ -145,7 +150,7 @@ for file in "${!source[@]}"; do
   arch=${arch##*_}
   if [[ "$type" == "DBX" && "$arch" != "all" ]]; then
     echo "${archguard[$arch]}"
-  elif [ "$type" == "SSP" ]; then
+  elif [[ "$type" == "SSP" ]]; then
     type="SSPU"
   fi
   echo "	List->Entry[List->Size].Type = ${type};"
@@ -153,6 +158,9 @@ for file in "${!source[@]}"; do
     echo "	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;"
   elif [[ "$type" == "DBX" ]]; then
     echo "	List->Entry[List->Size].Flags = ALLOW_UPDATE;"
+  fi
+  if [[ "${exclusive_set[${file}]}" != "" ]]; then
+    echo "	List->Entry[List->Size].Set = ${exclusive_set[${file}]};"
   fi
   if [[ "$type" == "SBAT" || "$type" == "MOK" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"

@@ -78,14 +78,18 @@
 #define UEFI_VAR_NV_BS_RT_TIMEAUTH  (UEFI_VAR_NV_BS_RT | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS)
 
 /* Flags */
-#define USE_BUFFER                  1
-#define NO_INSTALL                  2
-#define ALLOW_UPDATE                4
+#define USE_BUFFER                  0x01
+#define NO_INSTALL                  0x02
+#define ALLOW_UPDATE                0x04
+
+/* Exclusive sets */
+#define MOSBY_SET1                  0x01
+#define MOSBY_SET2                  0x02
 
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
 
-/* Types of "keys" this application is able to install */
+/* Types of Secure Boot variables this application is able to install */
 enum {
 	PK,
 	KEK,
@@ -114,7 +118,8 @@ typedef struct {
 /* Mosby installable entry */
 typedef struct {
 	UINT8 Type;
-	BOOLEAN Flags;
+	UINT8 Flags;
+	UINT8 Set;
 	UINT32 Attrs;
 	CHAR16 *Path;
 	CHAR8 *Url; 
