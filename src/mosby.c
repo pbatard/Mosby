@@ -172,6 +172,46 @@ STATIC INTN RemoveDuplicates(
 	return LastEntry;
 }
 
+STATIC VOID CheckMokVariables(VOID)
+{
+	EFI_STATUS Status;
+	CHAR16 *MokVarName[3] = { L"MokSBState", L"MokDBState", L"MokIgnoreDB" };
+	UINT8 MokVar[ARRAY_SIZE(MokVarName)] = { 0 };
+	UINT32 MokAttr[ARRAY_SIZE(MokVarName)];
+	UINTN i, Size;
+	INTN Sel;
+
+	for (i = 0; i < ARRAY_SIZE(MokVarName); i++) {
+		Size = sizeof(UINT8);
+		gRT->GetVariable(MokVarName[i], &gEfiShimLockGuid, &MokAttr[i], &Size, &MokVar[i]);
+	}
+	for (i = 0; i < ARRAY_SIZE(MokVar) && MokVar[i] == 0; i++);
+	if (i >= ARRAY_SIZE(MokVar))
+		return;
+
+	Sel = ConsoleYesNo(
+		(CONST CHAR16 *[]){
+			L"WARNING: Secure Boot bypass variables detected",
+			L"",
+			L"Mosby has detected that this system has some Shim variables set",
+			L"('MokSBState', 'MokDBState', 'MokIgnoreDB') that can cause it  ",
+			L"to ignore Secure Boot validation.                              ",
+			L"",
+			L"Do you want to revert these variables to their default values? ",
+			NULL
+		});
+	RecallPrintRestore();
+	if (Sel != 0)
+		return;
+	for (i = 0; i < ARRAY_SIZE(MokVarName); i++) {
+		if (MokVar[i] != 0) {
+			MokVar[i] = 0;
+			Status = gRT->SetVariable(MokVarName[i], &gEfiShimLockGuid, MokAttr[i], sizeof(UINT8), &MokVar[i]);
+			Print(L"Resetting '%s' variable: %r\n", MokVarName[i], Status);
+		}
+	}
+}
+
 /*
  * Application entry-point
  */
@@ -282,6 +322,9 @@ EFI_STATUS EFIAPI efi_main(
 	Status = InitializePki(TestMode);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"ERROR: This platform does not meet the minimum security requirements.\n");
+
+	/* Check and reset the Shim MOK variables if needed */
+	CheckMokVariables();
 
 	/* Verify that the platform is in Setup Mode */
 	Status = CheckSetupMode();
