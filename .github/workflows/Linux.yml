@@ -60,7 +60,7 @@ jobs:
     - name: Set up Linux environment
       run: |
         sudo apt-get update
-        sudo apt-get -y --no-install-recommends install python3-distutils uuid-dev ${{ matrix.TARGET_PKGS }}
+        sudo apt-get -y --no-install-recommends install python3-setuptools uuid-dev ${{ matrix.TARGET_PKGS }}
 
     - name: Set up EDK2
       run: |

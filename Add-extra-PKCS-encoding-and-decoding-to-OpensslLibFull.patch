@@ -1,15 +1,15 @@
-From 8ca01c378d047e5a11c0ca1e62929d7b03c39360 Mon Sep 17 00:00:00 2001
+From 7052e9b9182947997cd90f65d8448f5e8e8a34ae Mon Sep 17 00:00:00 2001
 From: Pete Batard <pete@akeo.ie>
-Date: Wed, 18 Sep 2024 14:09:00 +0100
+Date: Mon, 27 Jan 2025 19:24:05 +0000
 Subject: [PATCH] Add extra PKCS encoding and decoding to OpensslLibFull
 
 ---
- .../Library/OpensslLib/OpensslLibFull.inf     | 32 ++++++++++++++++---
+ .../Library/OpensslLib/OpensslLibFull.inf     | 34 ++++++++++++++++---
  .../Library/OpensslLib/OpensslStub/uefiprov.c | 10 ++++++
- 2 files changed, 38 insertions(+), 4 deletions(-)
+ 2 files changed, 39 insertions(+), 5 deletions(-)
 
 diff --git a/CryptoPkg/Library/OpensslLib/OpensslLibFull.inf b/CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
-index 55c6342904..eb488dc07c 100644
+index 32c79c39bb..7349a55d45 100644
 --- a/CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
 +++ b/CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
 @@ -1,6 +1,6 @@
@@ -21,7 +21,16 @@ index 55c6342904..eb488dc07c 100644
  #
  #  This library should be used if a module module needs ECC in TLS, or
  #  asymmetric cryptography services such as X509 certificate or PEM format
-@@ -245,6 +245,10 @@
+@@ -25,7 +25,7 @@
+ 
+   DEFINE OPENSSL_PATH            = openssl
+   DEFINE OPENSSL_GEN_PATH        = OpensslGen
+-  DEFINE OPENSSL_FLAGS           = -DL_ENDIAN -DOPENSSL_SMALL_FOOTPRINT -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -DOPENSSL_NO_ASM
++  DEFINE OPENSSL_FLAGS           = -DL_ENDIAN -DOPENSSL_SMALL_FOOTPRINT -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -DOPENSSL_NO_ASM -DOPENSSL_SYS_UEFI
+   DEFINE OPENSSL_FLAGS_NOASM     =
+ 
+ #
+@@ -244,6 +244,10 @@
    $(OPENSSL_PATH)/crypto/ec/ecx_backend.c
    $(OPENSSL_PATH)/crypto/ec/ecx_key.c
    $(OPENSSL_PATH)/crypto/ec/ecx_meth.c
@@ -32,7 +41,7 @@ index 55c6342904..eb488dc07c 100644
    $(OPENSSL_PATH)/crypto/encode_decode/decoder_err.c
    $(OPENSSL_PATH)/crypto/encode_decode/decoder_lib.c
    $(OPENSSL_PATH)/crypto/encode_decode/decoder_meth.c
-@@ -427,6 +431,22 @@
+@@ -426,6 +430,22 @@
    $(OPENSSL_PATH)/crypto/pkcs7/pk7_mime.c
    $(OPENSSL_PATH)/crypto/pkcs7/pk7_smime.c
    $(OPENSSL_PATH)/crypto/pkcs7/pkcs7err.c
@@ -55,7 +64,7 @@ index 55c6342904..eb488dc07c 100644
    $(OPENSSL_PATH)/crypto/property/defn_cache.c
    $(OPENSSL_PATH)/crypto/property/property.c
    $(OPENSSL_PATH)/crypto/property/property_err.c
-@@ -593,6 +613,10 @@
+@@ -592,6 +612,10 @@
    $(OPENSSL_PATH)/providers/implementations/encode_decode/decode_pem2der.c
    $(OPENSSL_PATH)/providers/implementations/encode_decode/decode_pvk2key.c
    $(OPENSSL_PATH)/providers/implementations/encode_decode/decode_spki2typespki.c
@@ -66,7 +75,7 @@ index 55c6342904..eb488dc07c 100644
    $(OPENSSL_PATH)/providers/implementations/encode_decode/endecoder_common.c
    $(OPENSSL_PATH)/providers/implementations/exchange/dh_exch.c
    $(OPENSSL_PATH)/providers/implementations/exchange/ecdh_exch.c
-@@ -706,10 +730,10 @@
+@@ -705,10 +729,10 @@
  #  OpensslStub/SslNull.c
  #  OpensslStub/EcSm2Null.c
    OpensslStub/uefiprov.c

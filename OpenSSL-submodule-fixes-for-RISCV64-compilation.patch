@@ -1,9 +1,10 @@
-From 48c67fe6b705e6e72004f57b858e183b6b2be3c3 Mon Sep 17 00:00:00 2001
+From b7f3fefcc4d946c78c2ab0a500e969632e593723 Mon Sep 17 00:00:00 2001
 From: Pete Batard <pete@akeo.ie>
-Date: Sat, 17 Aug 2024 15:29:10 +0100
+Date: Mon, 27 Jan 2025 20:38:04 +0000
 Subject: [PATCH] OpenSSL submodule fixes for RISCV64 compilation
 
 ---
+ crypto/ec/curve448/curve448.c                         | 2 +-
  crypto/ec/curve448/point_448.h                        | 2 +-
  crypto/ec/ec_ameth.c                                  | 3 ++-
  crypto/evp/evp_enc.c                                  | 2 +-
@@ -12,8 +13,21 @@ Subject: [PATCH] OpenSSL submodule fixes for RISCV64 compilation
  providers/implementations/macs/hmac_prov.c            | 2 +-
  providers/implementations/signature/ecdsa_sig.c       | 2 +-
  providers/implementations/signature/rsa_sig.c         | 2 +-
- 8 files changed, 9 insertions(+), 8 deletions(-)
+ 9 files changed, 10 insertions(+), 9 deletions(-)
 
+diff --git a/crypto/ec/curve448/curve448.c b/crypto/ec/curve448/curve448.c
+index 6928d9693c..7ddd617a73 100644
+--- a/crypto/ec/curve448/curve448.c
++++ b/crypto/ec/curve448/curve448.c
+@@ -509,7 +509,7 @@ struct smvt_control {
+     int power, addend;
+ };
+ 
+-#if defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ > 3))
++#if defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ > 3)) && !defined(_M_RISCV64) && !defined (__riscv)
+ # define NUMTRAILINGZEROS       __builtin_ctz
+ #else
+ # define NUMTRAILINGZEROS       numtrailingzeros
 diff --git a/crypto/ec/curve448/point_448.h b/crypto/ec/curve448/point_448.h
 index e67ea68044..72536c2471 100644
 --- a/crypto/ec/curve448/point_448.h
@@ -47,10 +61,10 @@ index d4348ff244..cac8672354 100644
          ERR_raise(ERR_LIB_EC, EC_R_DECODE_ERROR);
          return 0;
 diff --git a/crypto/evp/evp_enc.c b/crypto/evp/evp_enc.c
-index b178d10864..c33f930e6f 100644
+index 4e6f83e3d0..6cac709644 100644
 --- a/crypto/evp/evp_enc.c
 +++ b/crypto/evp/evp_enc.c
-@@ -1382,7 +1382,7 @@ int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)
+@@ -1423,7 +1423,7 @@ int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)
  
      EVP_CIPHER_CTX_reset(out);
  
@@ -60,10 +74,10 @@ index b178d10864..c33f930e6f 100644
  
      if (in->fetched_cipher != NULL && !EVP_CIPHER_up_ref(in->fetched_cipher)) {
 diff --git a/providers/implementations/include/prov/ciphercommon.h b/providers/implementations/include/prov/ciphercommon.h
-index 8153872cba..f448000ce7 100644
+index aacd49707f..03c25cbb1f 100644
 --- a/providers/implementations/include/prov/ciphercommon.h
 +++ b/providers/implementations/include/prov/ciphercommon.h
-@@ -315,7 +315,7 @@ static void name(PROV_CIPHER_CTX *dst, const PROV_CIPHER_CTX *src)             \
+@@ -317,7 +317,7 @@ static void name(PROV_CIPHER_CTX *dst, const PROV_CIPHER_CTX *src)             \
      CTX_TYPE *sctx = (CTX_TYPE *)src;                                          \
      CTX_TYPE *dctx = (CTX_TYPE *)dst;                                          \
                                                                                 \
@@ -112,7 +126,7 @@ index 865d49d100..472add01f2 100644
      dstctx->md = NULL;
      dstctx->mdctx = NULL;
 diff --git a/providers/implementations/signature/rsa_sig.c b/providers/implementations/signature/rsa_sig.c
-index 76516d9a09..0d453a4ae0 100644
+index 919ef17269..540bea8814 100644
 --- a/providers/implementations/signature/rsa_sig.c
 +++ b/providers/implementations/signature/rsa_sig.c
 @@ -994,7 +994,7 @@ static void *rsa_dupctx(void *vprsactx)
@@ -123,7 +137,7 @@ index 76516d9a09..0d453a4ae0 100644
 +    memcpy(dstctx, srcctx, sizeof(*dstctx));
      dstctx->rsa = NULL;
      dstctx->md = NULL;
-     dstctx->mdctx = NULL;
+     dstctx->mgf1_md = NULL;
 -- 
 2.45.2.windows.1
 

@@ -21,7 +21,7 @@
 [BuildOptions]
   DEBUG_*_*_CC_FLAGS             = -DENABLE_DEBUG
   RELEASE_*_*_CC_FLAGS           = -DMDEPKG_NDEBUG
-  *_*_*_CC_FLAGS                 = -flto=auto -DDISABLE_NEW_DEPRECATED_INTERFACES
+  *_*_*_CC_FLAGS                 = -flto=auto -fno-stack-protector -DDISABLE_NEW_DEPRECATED_INTERFACES 
 
 !include MdePkg/MdeLibs.dsc.inc
 
@@ -64,8 +64,7 @@
 
 [LibraryClasses.ARM, LibraryClasses.AARCH64]
   ArmLib|ArmPkg/Library/ArmLib/ArmBaseLib.inf
-  NULL|ArmPkg/Library/CompilerIntrinsicsLib/CompilerIntrinsicsLib.inf
-  NULL|MdePkg/Library/BaseStackCheckLib/BaseStackCheckLib.inf
+  CompilerIntrinsicsLib|MdePkg/Library/CompilerIntrinsicsLib/CompilerIntrinsicsLib.inf
 
 [LibraryClasses.ARM]
   ArmSoftFloatLib|ArmPkg/Library/ArmSoftFloatLib/ArmSoftFloatLib.inf

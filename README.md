@@ -60,9 +60,9 @@ The motivations behind this are as follows:
    to arbitrarily deny common Linux bootloaders such as GRUB from being Secure Boot signed,
    trying to lock down hardware so that Secure Boot could not ever been disabled by the user,
    making a two-tier version of Secure Boot signatures with one exclusive tier for Windows
-   and a lower tier for other OSes and application or even trying to prevent anybody that is
-   not an OS or hardware manufacturer from being allowed to redistribute the UEFI revocation
-   lists...  
+   and a lower tier for other OSes and application or, up until recently, even trying to
+   prevent anybody that wasn't an OS or hardware manufacturer from being allowed to
+   redistribute UEFI revocation lists...  
    The end result is that it has become a lot more convoluted and daunting than it should
    really be for end-users, to make Secure Boot work in their favour.  
    This application can also remedy that.

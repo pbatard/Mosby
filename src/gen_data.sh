@@ -1,6 +1,25 @@
 #!/bin/env bash
 # This script generates the C source for the data we embed in Mosby.
 
+github_url="https://github.com/"
+
+# Retrieve the commit date from a GitHub URL
+get_commit_date() {
+  url=$1
+  if [[ "${url}" =~ ^"${github_url}" ]]; then
+    project=${url/#${github_url}}
+    project=$(echo ${project} | cut -f1,2 -d'/')
+    date_url="${url#*main/}"
+    date_url="${date_url//\//%2F}"
+    date_url="https://api.github.com/repos/${project}/commits?path=${date_url}&page=1&per_page=1"
+    commit_date="$(curl -s -L ${date_url} | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
+    commit_date=${commit_date//-/.}
+    echo $commit_date
+  else
+    echo NO_DATE
+  fi
+}
+
 # The binaries we want to embedd and their URLs
 declare -A source=(
   [kek_ms1.cer]='https://go.microsoft.com/fwlink/?LinkId=321185'
@@ -10,31 +29,38 @@ declare -A source=(
   # into the DBX database. However, since, even with the 2024.08 refresh, MS is
   # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
   # credentials, and the application of KB5025885 is still a massive mess, we
-  # allow users to install it as part of an XOR set with dbx_update_2024_all.bin.
+  # allow users to install it as part of an XOR set with dbx_update_2024_###.bin.
   [db_ms1.cer]='https://go.microsoft.com/fwlink/?linkid=321192'
   [db_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=321194'
   [db_ms3.cer]='https://go.microsoft.com/fwlink/?linkid=2239776'
   [db_ms4.cer]='https://go.microsoft.com/fwlink/?linkid=2239872'
-  [dbx_x64.bin]='https://uefi.org/sites/default/files/resources/x64_DBXUpdate.bin'
-  [dbx_ia32.bin]='https://uefi.org/sites/default/files/resources/x86_DBXUpdate.bin'
-  [dbx_aa64.bin]='https://uefi.org/sites/default/files/resources/arm64_DBXUpdate.bin'
-  [dbx_arm.bin]='https://uefi.org/sites/default/files/resources/arm_DBXUpdate.bin'
+  # https://github.com/microsoft/secureboot_objects is now THE reference for all DBX binaries
+  [dbx_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin'
+  [dbx_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin'
+  [dbx_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin'
+  [dbx_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin'
+  # At last, Microsoft has made these available publicly!
+  [dbx_update_2024_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdate2024.bin'
+  [dbx_update_svn_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdateSVN.bin'
+  [dbx_update_2024_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdate2024.bin'
+  [dbx_update_svn_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdateSVN.bin'
+  [dbx_update_2024_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdate2024.bin'
+  [dbx_update_svn_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdateSVN.bin'
+  [dbx_update_2024_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdate2024.bin'
+  [dbx_update_svn_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdateSVN.bin'
   # Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
   # See: https://github.com/rhboot/shim/issues/685
   [sbat_level.txt]='https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt'
-  # Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't understand the
-  # importance of letting everyone access CRITICAL PIECES OF A PUBLIC SECURITY TRUST CHAIN!
-  [ssp_var_defs.h]='https://raw.githubusercontent.com/rhboot/shim/main/include/ssp_var_defs.h'
-  # Found in %WINDIR%\System32\SecureBootUpdates\ on recent versions of Windows, these are
-  # the new DBX updates, that Microsoft are about to apply to all systems... but that they
-  # are again not making PUBLICLY AVAILABLE TO EVERYONE!
-  [dbx_update_2024_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_2024_all.bin'
-  [dbx_update_svn_all.bin]='https://github.com/pbatard/Mosby/raw/main/data/dbx_update_svn_all.bin'
+  # Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't make these public yet.
+  [ssp_var_defs.h]='https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h'
 )
 
 declare -A exclusive_set=(
   [db_ms1.cer]='MOSBY_SET1'
-  [dbx_update_2024_all.bin]='MOSBY_SET2'
+  [dbx_update_2024_x64.bin]='MOSBY_SET2'
+  [dbx_update_2024_ia32.bin]='MOSBY_SET2'
+  [dbx_update_2024_aa64.bin]='MOSBY_SET2'
+  [dbx_update_2024_arm.bin]='MOSBY_SET2'
 )
 
 # Optional description for specific files
@@ -42,12 +68,18 @@ declare -A exclusive_set=(
 # hardcode the EFI_TIME timestamp of ALL authenticated list updates to 2010.03.06
 # instead of using the actual timestamp of when they create the variables...
 declare -A description=(
-  [dbx_x64.bin]='DBX for x86 (64 bit) [2023.05.09]'
-  [dbx_ia32.bin]='DBX for x86 (32 bit) [2023.05.09]'
+  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.01.14]'
+  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.01.14]'
   [dbx_aa64.bin]='DBX for ARM (64 bit) [2023.05.09]'
   [dbx_arm.bin]='DBX for ARM (32 bit) [2023.05.09]'
-  [dbx_update_2024_all.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_all.bin]="Microsoft's 'Secure Version Number' DBX entries [2024.08]"
+  [dbx_update_2024_x64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
+  [dbx_update_svn_x64.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_2024_ia32.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
+  [dbx_update_svn_ia32.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_2024_aa64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
+  [dbx_update_svn_aa64.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_2024_arm.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
+  [dbx_update_svn_arm.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
 )
 
 declare -A archguard=(
@@ -67,7 +99,7 @@ cat << EOF
 /* Autogenerated file - DO NOT EDIT */
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") embedded data
- * Copyright © 2024 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -148,6 +180,7 @@ for file in "${!source[@]}"; do
   type=${type^^}
   arch=${file%\.*}
   arch=${arch##*_}
+  url=${source[${file}]}
   if [[ "$type" == "DBX" && "$arch" != "all" ]]; then
     echo "${archguard[$arch]}"
   elif [[ "$type" == "SSP" ]]; then
@@ -168,9 +201,9 @@ for file in "${!source[@]}"; do
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;"
   fi
   echo "	List->Entry[List->Size].Path = L\"${file}\";"
-  echo "	List->Entry[List->Size].Url = \"${source[${file}]}\";"
+  echo "	List->Entry[List->Size].Url = \"${url}\";"
   if [[ "$type" == "SSPU" || "$type" == "SSPV" ]]; then
-    echo "	List->Entry[List->Size].Description = \"${ssp_varname[${type}]} [${ssp_date}]\";"
+    echo "	List->Entry[List->Size].Description = \"${ssp_varname[${type}]} [$(get_commit_date ${url})]\";"
     echo "	List->Entry[List->Size].Buffer.Data = ${ssp_varname[${type}]};"
     echo "	List->Entry[List->Size].Buffer.Size = sizeof(${ssp_varname[${type}]});"
   else
