@@ -1,0 +1,26 @@
+From 16f95d56d81712f763728b20290ca7ba7434590f Mon Sep 17 00:00:00 2001
+From: Pete Batard <pete@akeo.ie>
+Date: Wed, 29 Jan 2025 11:21:24 +0000
+Subject: [PATCH] OpenSSL submodule fixes for LOONGARCH64 compilation
+
+* left shift was generating references to __ashlti3 which we don't have.
+---
+ crypto/ec/curve448/f_generic.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/crypto/ec/curve448/f_generic.c b/crypto/ec/curve448/f_generic.c
+index 4c571810d3..3084d82319 100644
+--- a/crypto/ec/curve448/f_generic.c
++++ b/crypto/ec/curve448/f_generic.c
+@@ -80,7 +80,7 @@ mask_t gf_deserialize(gf x, const uint8_t serial[SER_BYTES], int with_hibit,
+             sj = serial[j];
+             if (j == nbytes - 1)
+                 sj &= ~hi_nmask;
+-            buffer |= ((dword_t) sj) << fill;
++            ((uint8_t*)&buffer)[j] = sj;
+             fill += 8;
+             j++;
+         }
+-- 
+2.45.2.windows.1
+

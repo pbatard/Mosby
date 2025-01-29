@@ -1,7 +1,7 @@
 ## @file
 #  MSSB Application
 #
-#  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
+#  Copyright (c) 2024-2025, Pete Batard <pete@akeo.ie>
 #
 #  SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -12,7 +12,7 @@
   PLATFORM_GUID                  = 8F782584-E305-4360-B11B-A92C6380D1D6
   PLATFORM_VERSION               = 1.0
   DSC_SPECIFICATION              = 0x00010005
-  SUPPORTED_ARCHITECTURES        = IA32|X64|EBC|ARM|AARCH64|RISCV64
+  SUPPORTED_ARCHITECTURES        = IA32|X64|EBC|ARM|AARCH64|RISCV64|LOONGARCH64
   OUTPUT_DIRECTORY               = Build
   BUILD_TARGETS                  = DEBUG|RELEASE|NOOPT
   SKUID_IDENTIFIER               = DEFAULT

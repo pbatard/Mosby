@@ -16,6 +16,7 @@ env:
   GCC5_ARM_PREFIX: arm-linux-gnueabi-
   GCC5_AARCH64_PREFIX: aarch64-linux-gnu-
   GCC5_RISCV64_PREFIX: riscv64-linux-gnu-
+  GCC5_LOONGARCH64_PREFIX: loongarch64-unknown-linux-gnu-
 
 jobs:
   build:
@@ -23,7 +24,7 @@ jobs:
 
     strategy:
       matrix:
-        TARGET_TYPE: [ia32, x64, aa64, arm, riscv64]
+        TARGET_TYPE: [ia32, x64, aa64, arm, riscv64, loongarch64]
         include:
         - TARGET_TYPE: x64
           TARGET_ARCH: X64
@@ -40,6 +41,9 @@ jobs:
         - TARGET_TYPE: riscv64
           TARGET_ARCH: RISCV64
           TARGET_PKGS: gcc-riscv64-linux-gnu
+        - TARGET_TYPE: loongarch64
+          TARGET_ARCH: LOONGARCH64
+          TARGET_PKGS: gcc-multilib
 
     steps:
     - name: Check out repository
@@ -61,12 +65,17 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get -y --no-install-recommends install python3-setuptools uuid-dev ${{ matrix.TARGET_PKGS }}
+        if [[ "${{ matrix.TARGET_ARCH }}" == "LOONGARCH64" ]]; then
+          curl -L -O https://github.com/loongson/build-tools/releases/download/2024.11.01/x86_64-cross-tools-loongarch64-binutils_2.43.1-gcc_14.2.0-glibc_2.40.tar.xz
+          tar -xJf x86_64-cross-tools-loongarch64-binutils_2.43.1-gcc_14.2.0-glibc_2.40.tar.xz
+          echo "$PWD/cross-tools/bin" >> "$GITHUB_PATH"
+        fi
 
     - name: Set up EDK2
       run: |
         # We must patch EDK2's OpenSSL module to be able to import/export certificates and keys
         patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
-        # And we must patch OpenSSL itself to fix ARM and RISCV64 compilation
+        # And we must patch OpenSSL itself to fix ARM, RISCV64 and LOONGARCH compilation
         if [ -f OpenSSL-submodule-fixes-for-${{ matrix.TARGET_ARCH }}-compilation.patch ]; then
           patch -d edk2/CryptoPkg/Library/OpensslLib/openssl -p1 -i ../../../../../OpenSSL-submodule-fixes-for-${{ matrix.TARGET_ARCH }}-compilation.patch
         fi

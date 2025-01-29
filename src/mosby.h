@@ -61,6 +61,8 @@
 	#define ARCH_EXT                L"arm"
 #elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
 	#define ARCH_EXT                L"riscv64"
+#elif defined (_M_LOONGARCH64) || defined (__loongarch64)
+	#define ARCH_EXT                L"loongarch64"
 #else
 #	error Unsupported architecture
 #endif
