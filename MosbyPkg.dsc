@@ -66,9 +66,6 @@
   ArmLib|ArmPkg/Library/ArmLib/ArmBaseLib.inf
   CompilerIntrinsicsLib|MdePkg/Library/CompilerIntrinsicsLib/CompilerIntrinsicsLib.inf
 
-[LibraryClasses.ARM]
-  ArmSoftFloatLib|ArmPkg/Library/ArmSoftFloatLib/ArmSoftFloatLib.inf
-
 ###################################################################################################
 #
 # Components Section - list of the modules and components that will be processed by compilation

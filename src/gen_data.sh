@@ -68,7 +68,7 @@ declare -A exclusive_set=(
 # hardcode the EFI_TIME timestamp of ALL authenticated list updates to 2010.03.06
 # instead of using the actual timestamp of when they create the variables...
 declare -A description=(
-  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.01.14]'
+  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.06.11]'
   [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.01.14]'
   [dbx_aa64.bin]='DBX for ARM (64 bit) [2023.05.09]'
   [dbx_arm.bin]='DBX for ARM (32 bit) [2023.05.09]'
