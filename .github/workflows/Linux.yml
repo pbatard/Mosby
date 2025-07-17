@@ -5,10 +5,14 @@ on:
     branches: [main]
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
     tags:
       - '**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
 
 env:
   BUILD_TYPE: RELEASE

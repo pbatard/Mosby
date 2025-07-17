@@ -22,18 +22,18 @@ The motivations behind this are as follows:
    Whereas, in itself, this will not prevent **existing** Secure Boot signed bootloaders from
    validating (as long as they haven't been revoked through other means) it will however
    prevent any **newer** UEFI bootloader from doing so which basically means that, if your OS
-   or OS installater was produced after those DB certificates expire, and you don't have the
+   or OS installer was produced after those DB certificates expire, and you don't have the
    additional 2023 DB certificates installed (see below), then, come the second half of 2026,
    you will not be able to boot or even install a Secure Boot compatible OS in a Secure Boot
    enabled environment!  
    This application can remedy that.
 2. In 2023, because of the expiration of the certificates listed above, Microsoft introduced
-   one new *KEK* and two new *DB* certificates, that are therefore not be commonly found in
-   your system manufacturer's default key (especially if your system has not received any
-   firmware update since 2024) and that (because a *KEK* can **only** be installed through
+   one new *KEK* and two new *DB* certificates, that are therefore not commonly found in your
+   system manufacturer's default key (especially if your system has not received any firmware
+   update since 2024) and that (because a *KEK* can **only** be installed through
    [updates that are signed by the platform manufacturer](https://uefi.org/specs/UEFI/2.9_A/32_Secure_Boot_and_Driver_Signing.html#enrolling-key-exchange-keys))
-   cannot be fully updated from the OS itself, even if the OS is Secure Boot compatible or
-   comes from Micosoft.  
+   can be problematic to update from the OS itself, even if the OS is Secure Boot compatible
+   or comes from Microsoft.  
    This application can remedy that.
 3. As of the second half of 2024, and due to
    [many](https://arstechnica.com/information-technology/2023/03/unkillable-uefi-malware-bypassing-secure-boot-enabled-by-unpatchable-windows-flaw/),
@@ -114,7 +114,7 @@ variable to the data you want to install for it.
         as the current SBAT data from the system (if SBAT is set).
 * `-s`: Silent option (Removes some of the early and late prompts).
 * `-u`: Update only: Only update the revocation databases, SBAT, and SSPV/SSPU as needed.
-* `-t`: Test mode. Disables some checks and wnables the internal **low security** Random
+* `-t`: Test mode. Disables some checks and enables the internal **low security** Random
         Number Generator, if no other Random Number Generator can be found.
 * `-x`: Install the Microsoft update that invalidates `Microsoft Windows Production PCA 2011`.
         You should only use this if you know what you are doing, as you you may not be able

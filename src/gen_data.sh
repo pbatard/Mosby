@@ -12,7 +12,7 @@ get_commit_date() {
     date_url="${url#*main/}"
     date_url="${date_url//\//%2F}"
     date_url="https://api.github.com/repos/${project}/commits?path=${date_url}&page=1&per_page=1"
-    commit_date="$(curl -s -L ${date_url} | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
+    commit_date="$(curl -s -L ${date_url} | python -m json.tool | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
     commit_date=${commit_date//-/.}
     echo $commit_date
   else
