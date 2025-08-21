@@ -40,11 +40,11 @@ The motivations behind this are as follows:
    [many](https://wack0.github.io/dubiousdisk/) vulnerabilities uncovered in the UEFI Windows
    bootloaders, Microsoft is in the process of **completely removing** one of the base DB
    certificates (The `Microsoft Windows Production PCA 2011` certificate mentioned above).  
-   **Once Microsoft produces installation media that no longer users this certificate**,
+   **Once Microsoft produces installation media that no longer uses this certificate**,
    this application will make sure that this DB certificate is properly removed (as opposed
    to what would happen if you use the native Secure Boot key restoration from your UEFI
    firmware).
-4. In 2024, it was disovered that some PC manufacturers [played fast and loose with the
+4. In 2024, it was discovered that some PC manufacturers [played fast and loose with the
    Primary Key (*PK*) shipped with their hardware](https://arstechnica.com/security/2024/07/secure-boot-is-completely-compromised-on-200-models-from-5-big-device-makers/),
    basically meaning that malicious actors could gain access to the secret key, and therefore
    gain full trusted access of the affected machines. It is also very likely (though of
@@ -56,7 +56,7 @@ The motivations behind this are as follows:
    With its default settings, this application can fully remedy that.
 5. OS manufacturers, such as Microsoft, have long taken a very user-adverse stance against
    the ability of individuals to ultimately be in control the UEFI boot signing process, by,
-   to name just a few instances, using fake rethoric against some software licenses in order
+   to name just a few instances, using fake rhetoric against some software licenses in order
    to arbitrarily deny common Linux bootloaders such as GRUB from being Secure Boot signed,
    trying to lock down hardware so that Secure Boot could not ever been disabled by the user,
    making a two-tier version of Secure Boot signatures with one exclusive tier for Windows
@@ -67,7 +67,7 @@ The motivations behind this are as follows:
    really be for end-users, to make Secure Boot work in their favour.  
    This application can also remedy that.
 6. Figuring out SBAT, SkuSiPolicy as well as Microsoft's new SVN DBX based revocation updates
-   is currrently a mess, as you need to wade through many different sources to try to ensure
+   is currently a mess, as you need to wade through many different sources to try to ensure
    that your system is actually up to date with them (because if they aren't, an attacker can
    easily bypass Secure Boot on your system).  
    This application can remedy that.
