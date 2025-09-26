@@ -21,7 +21,7 @@
 [BuildOptions]
   DEBUG_*_*_CC_FLAGS             = -DENABLE_DEBUG
   RELEASE_*_*_CC_FLAGS           = -DMDEPKG_NDEBUG
-  *_*_*_CC_FLAGS                 = -flto=auto -fno-stack-protector -DDISABLE_NEW_DEPRECATED_INTERFACES 
+  *_*_*_CC_FLAGS                 = -flto=auto -fno-stack-protector -DDISABLE_NEW_DEPRECATED_INTERFACES
 
 !include MdePkg/MdeLibs.dsc.inc
 

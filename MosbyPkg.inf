@@ -4,7 +4,7 @@
 #  This UEFI applucation sets up the certificates and keys for
 #  Secure Boot ownership for the user.
 #
-#  Copyright (c) 2024, Pete Batard <pete@akeo.ie>
+#  Copyright (c) 2024-2025, Pete Batard <pete@akeo.ie>
 #
 #  SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -26,6 +26,7 @@
   src/pki.c
   src/random.c
   src/shell.c
+  src/system.c
   src/utf8.c
   src/variables.c
 
@@ -61,6 +62,8 @@
   gEfiImageSecurityDatabaseGuid
   gEfiFileInfoGuid
   gEfiFileSystemInfoGuid
+  gEfiSmbiosTableGuid
+  gEfiSmbios3TableGuid
 
 [Protocols]
   gEfiLoadedImageProtocolGuid

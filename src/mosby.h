@@ -139,3 +139,5 @@ typedef struct {
 EFI_STATUS InitializeList(
 	IN OUT MOSBY_LIST *List
 );
+
+EFI_STATUS PrintSystemInfo(VOID);

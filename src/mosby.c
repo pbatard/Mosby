@@ -318,6 +318,7 @@ EFI_STATUS EFIAPI efi_main(
 
 	/* Initialize the file logger */
 	OpenLogger(gBaseImageHandle, L"Mosby.log");
+	PrintSystemInfo();
 	if (UpdateMode)
 		goto process_binaries;
 
