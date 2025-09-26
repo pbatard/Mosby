@@ -18,6 +18,6 @@
 
 EFI_STATUS CheckSetupMode(VOID);
 
-VOID ExitNotice(
+BOOLEAN ExitNotice(
 	IN CONST BOOLEAN KeysGenerated
 );

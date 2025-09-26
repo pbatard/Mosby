@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
- * Copyright 2024 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -94,6 +94,12 @@ EFI_STATUS SimpleFileSelector(
 	IN CONST CHAR16 *Name,
 	IN CONST CHAR16 *Filter,
 	OUT CHAR16 **Result
+);
+
+CONST CHAR16* GetDeviceHandleFromPath(
+	IN CONST EFI_HANDLE ImageHandle,
+	IN CONST CHAR16 *Path,
+	OUT EFI_HANDLE *DeviceHandle
 );
 
 EFI_STATUS SimpleFileReadAllByPath(

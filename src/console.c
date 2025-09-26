@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
- * Copyright 2024 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,14 +16,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <Base.h>
-#include <Uefi.h>
+#include "file.h"
+#include "console.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/UefiLib.h>
 
 #include <Uefi/UefiBaseType.h>
@@ -33,6 +34,8 @@
 
 STATIC UINTN CurrentLine = 0;
 STATIC CHAR16* PrintLine[MAX_PRINT_LINES] = { 0 };
+STATIC CHAR16 LogPath[80];
+STATIC EFI_FILE_HANDLE LogHandle = NULL;
 
 STATIC __inline INTN CountLines(
 	IN CONST CHAR16 *StrArray[]
@@ -377,6 +380,77 @@ VOID ConsoleReset(VOID)
 	Console->ClearScreen(Console);
 }
 
+EFI_STATUS OpenLogger(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Path
+)
+{
+	EFI_TIME Time = { 0 };
+	CHAR16 TimeStamp[MAX_LINE_SIZE];
+	EFI_STATUS Status;
+	EFI_HANDLE DeviceHandle;
+	CONST CHAR16 *PathStart;
+
+	StrCpyS(LogPath, 80, Path); 
+	gRT->GetTime(&Time, NULL);
+	// Timezone conversion would be fine, but DST is too much of a PITA, so UTC it is...
+	UnicodeSPrint(TimeStamp, MAX_LINE_SIZE * sizeof(CHAR16),
+		L"%s[Mosby session started: %4u-%02u-%02u %02u:%02u:%02u [UTC]\n",
+		SimpleFileExistsByPath(Image, Path) ? L"\r\n" : L"\uFEFF",
+		Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
+
+	PathStart = GetDeviceHandleFromPath(Image, Path, &DeviceHandle);
+	Status = SimpleFileOpen(DeviceHandle == NULL ? Image : DeviceHandle,
+		PathStart, &LogHandle, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE);
+	if (Status == EFI_SUCCESS) {
+		LogHandle->SetPosition(LogHandle, 0xFFFFFFFFFFFFFFFF);
+		Status = SimpleFileWriteAll(LogHandle, StrLen(TimeStamp) * sizeof(CHAR16), TimeStamp);
+	}
+	return Status;
+}
+
+VOID CloseLogger(VOID)
+{
+	EFI_TIME Time = { 0 };
+	CHAR16 TimeStamp[MAX_LINE_SIZE];
+
+	if (LogHandle == NULL)
+		return;
+
+	gRT->GetTime(&Time, NULL);
+	UnicodeSPrint(TimeStamp, MAX_LINE_SIZE * sizeof(CHAR16),
+		L"[Mosby session ended: %4u-%02u-%02u %02u:%02u:%02u [UTC]\n",
+		Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
+	SimpleFileWriteAll(LogHandle, StrLen(TimeStamp) * sizeof(CHAR16), TimeStamp);
+	SimpleFileClose(LogHandle);
+	Print(L"Saved log to '%s'\n", LogPath);
+}
+
+/* Console + file output */
+UINTN EFIAPI Logger(
+	IN  CONST CHAR16 *FormatString,
+	...
+)
+{
+	// NB: VA_LIST requires the function call to be EFIAPI decorated
+	UINTN Ret;
+	VA_LIST Marker;
+	CHAR16 PrintLine[MAX_LINE_SIZE];
+
+	if (StrLen(FormatString) == 0)
+		return 0;
+	PrintLine[0] = L'\0';
+	VA_START(Marker, FormatString);
+	Ret = UnicodeVSPrint(PrintLine, MAX_LINE_SIZE * sizeof(CHAR16), FormatString, Marker);
+	VA_END(Marker);
+	// If we truncate a line with that ends with an LF, make sure we keep the LF
+	if (FormatString[StrLen(FormatString) - 1] == L'\n')
+		PrintLine[MAX_LINE_SIZE - 2] = L'\n';
+	if (LogHandle != NULL)
+		SimpleFileWriteAll(LogHandle, StrLen(PrintLine) * sizeof(CHAR16), PrintLine);
+	return Ret;
+}
+
 /* Set of functions enabling printed data to persist on screen after displaying a dialog */
 UINTN EFIAPI RecallPrint(
 	IN  CONST CHAR16 *FormatString,
@@ -387,6 +461,8 @@ UINTN EFIAPI RecallPrint(
 	VA_LIST Marker;
 	UINTN Ret;
 
+	if (StrLen(FormatString) == 0)
+		return 0;
 	if (CurrentLine >= MAX_PRINT_LINES)
 		return 0;
 
@@ -400,7 +476,10 @@ UINTN EFIAPI RecallPrint(
 	// If we truncate a line with that ends with an LF, make sure we keep the LF
 	if (FormatString[StrLen(FormatString) - 1] == L'\n')
 		PrintLine[CurrentLine][MAX_LINE_SIZE - 2] = L'\n';
-	Print(L"%s", PrintLine[CurrentLine++]);
+	Print(L"%s", PrintLine[CurrentLine]);
+	if (LogHandle != NULL)
+		SimpleFileWriteAll(LogHandle, StrLen(PrintLine[CurrentLine]) * sizeof(CHAR16), PrintLine[CurrentLine]);
+	CurrentLine++;
 	return Ret;
 }
 
@@ -422,4 +501,66 @@ VOID RecallPrintFree(VOID)
 		PrintLine[i] = NULL;
 	}
 	CurrentLine = 0;
+}
+
+VOID FlushKeyboardInput(VOID)
+{
+	EFI_INPUT_KEY Key = { 0 };
+
+	gST->ConIn->Reset(gST->ConIn, TRUE);
+	// Per specs, the above is supposed to be enough to clear the keystroke
+	// buffer. However, some firmwares do not seem to be specs compliant so
+	// we add additional manual flushing.
+	while (gST->BootServices->CheckEvent(gST->ConIn->WaitForKey) != EFI_NOT_READY) {
+		gST->ConIn->ReadKeyStroke(gST->ConIn, &Key);
+		gBS->Stall(50000);
+	}
+}
+
+BOOLEAN CountDown(
+	IN CONST CHAR16* Message,
+	IN CONST CHAR16* Notes,
+	IN CONST UINTN Duration
+)
+{
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
+	EFI_INPUT_KEY Key;
+	UINTN MessagePos, NotesPos, CounterPos;
+	UINTN Rows, Cols;
+	INTN i;
+	CHAR16 EmptyLine[256] = { 0 };
+
+	Console->QueryMode(Console, Console->Mode->Mode, &Cols, &Rows);	
+	MessagePos = Cols / 2 - StrLen(Message) / 2 - 1;
+	CounterPos = MessagePos + StrLen(Message) + 2;
+	NotesPos = Cols / 2 - StrLen(Notes) / 2 - 1;
+
+	for (i = 0; i < Cols; i++)
+		EmptyLine[i] = L' ';
+	EmptyLine[i] = L'\0';
+	for (i = 2; i <= 4; i++) {
+		SetTextPosition(0, Rows - i);
+		Print(EmptyLine);
+	}
+	SetTextPosition(MessagePos, Rows - 4);
+	Print(L"[%s ", Message);
+	if (Notes != NULL) {
+		SetTextPosition(NotesPos, Rows - 2);
+		Print(Notes);
+	}
+	
+	FlushKeyboardInput();
+	for (i = (INTN)Duration; i >= 0; i -= 200) {
+		// Allow the user to press a key to interrupt the countdown
+		if (gST->BootServices->CheckEvent(gST->ConIn->WaitForKey) != EFI_NOT_READY) {
+			if (gST->ConIn->ReadKeyStroke(gST->ConIn, &Key) == EFI_SUCCESS)
+				return (Key.ScanCode != SCAN_ESC);
+		}
+		if (i % 1000 == 0) {
+			SetTextPosition(CounterPos, Rows - 4);
+			Print(L"%d]   ", i / 1000);
+		}
+		gBS->Stall(200000);
+	}
+	return TRUE;
 }

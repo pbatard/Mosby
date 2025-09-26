@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby")
- * Copyright © 2024 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -207,7 +207,7 @@ STATIC VOID CheckMokVariables(VOID)
 		if (MokVar[i] != 0) {
 			MokVar[i] = 0;
 			Status = gRT->SetVariable(MokVarName[i], &gEfiShimLockGuid, MokAttr[i], sizeof(UINT8), &MokVar[i]);
-			Print(L"Resetting '%s' variable: %r\n", MokVarName[i], Status);
+			Logger(L"Resetting '%s' variable: %r\n", MokVarName[i], Status);
 		}
 	}
 }
@@ -220,7 +220,8 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, Append;
+	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE;
+	BOOLEAN Append = FALSE, Reboot = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time;
 	UINT8 Set = MOSBY_SET1;
@@ -250,25 +251,25 @@ EFI_STATUS EFIAPI efi_main(
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
-				Print(L"Embedded data:\n");
+				Logger(L"Embedded data:\n");
 				for (i = 0; i < List.Size; i++) {
 					if (List.Entry[i].Description != NULL) {
-						Print(L"o %a %a\n        From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
+						Logger(L"o %a %a\n        From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
 							List.Entry[i].Description, List.Entry[i].Url);
-						Print(L"        %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
+						Logger(L"        %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
 					}
 				}
 				if (ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat) == EFI_SUCCESS) {
-					Print(L"\nCurrent system SBAT:\n");
+					Logger(L"\nCurrent system SBAT:\n");
 					for (SBatLine = SBat; SBatLine[0] != '\0'; ) {
 						for (i = 0; ; i++) {
 							if (SBatLine[i] == '\n') {
 								SBatLine[i] = '\0';
-								Print(L"%a\n", SBatLine);
+								Logger(L"%a\n", SBatLine);
 								SBatLine = &SBatLine[i + 1];
 								break;
 							} else if (SBatLine[i] == '\0') {
-								Print(L"%a\n", SBatLine);
+								Logger(L"%a\n", SBatLine);
 								SBatLine = &SBatLine[i];
 								break;
 							}
@@ -315,6 +316,8 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
+	/* Initialize the file logger */
+	OpenLogger(gBaseImageHandle, L"Mosby.log");
 	if (UpdateMode)
 		goto process_binaries;
 
@@ -571,12 +574,17 @@ install:
 	}
 
 	if (!gOptionSilent && !UpdateMode)
-		ExitNotice(GenDBCred);
+		Reboot = ExitNotice(GenDBCred);
 
 exit:
 	for (i = 0; i < List.Size; i++)
 		FreePool(List.Entry[i].Variable.Data);
 	FreePool(Argv);
 	RecallPrintFree();
+	CloseLogger();
+	if (Reboot) {
+		if (CountDown(L"Rebooting in", L"Press Esc to cancel, any other key to reboot immediately", 10000))
+			gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL);
+	}
 	return Status;
 }

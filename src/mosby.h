@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby")
- * Copyright © 2024 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,9 +59,9 @@
 	#define ARCH_EXT                L"aa64"
 #elif defined (_M_ARM) || defined(__arm__)
 	#define ARCH_EXT                L"arm"
-#elif defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))
+#elif defined(_M_RISCV64) || (defined(__riscv) && (__riscv_xlen == 64))
 	#define ARCH_EXT                L"riscv64"
-#elif defined (_M_LOONGARCH64) || defined (__loongarch64)
+#elif defined (_M_LOONGARCH64) || defined(__loongarch64)
 	#define ARCH_EXT                L"loongarch64"
 #else
 #	error Unsupported architecture

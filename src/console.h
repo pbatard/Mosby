@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
- * Copyright 2024 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
 /* Error reporting macros */
 #define ReportErrorAndExit(...) do { RecallPrint(__VA_ARGS__); goto exit; } while(0)
 #define Abort(s, ...)           do { Status = s; RecallPrint(__VA_ARGS__); goto exit; } while(0) 
+
+#define SetTextPosition(x, y)   gST->ConOut->SetCursorPosition(gST->ConOut, x, y)
 
 EFI_INPUT_KEY ConsoleGetKeystroke(VOID);
 
@@ -78,6 +80,18 @@ VOID ConsoleError(
 
 VOID ConsoleReset(VOID);
 
+UINTN EFIAPI Logger(
+	IN  CONST CHAR16 *FormatString,
+	...
+);
+
+EFI_STATUS OpenLogger(
+	IN CONST EFI_HANDLE Image,
+	IN CONST CHAR16 *Name
+);
+
+VOID CloseLogger(VOID);
+
 UINTN EFIAPI RecallPrint(
 	IN  CONST CHAR16 *FormatString,
 	...
@@ -86,3 +100,9 @@ UINTN EFIAPI RecallPrint(
 VOID RecallPrintRestore(VOID);
 
 VOID RecallPrintFree(VOID);
+
+BOOLEAN CountDown(
+	IN CONST CHAR16* Message,
+	IN CONST CHAR16* Notes,
+	IN CONST UINTN Duration
+);
