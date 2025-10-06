@@ -34,6 +34,7 @@ declare -A source=(
   [db_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=321194'
   [db_ms3.cer]='https://go.microsoft.com/fwlink/?linkid=2239776'
   [db_ms4.cer]='https://go.microsoft.com/fwlink/?linkid=2239872'
+  [db_ms5.cer]='https://go.microsoft.com/fwlink/?linkid=2284009'
   # https://github.com/microsoft/secureboot_objects is now THE reference for all DBX binaries
   [dbx_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin'
   [dbx_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin'
