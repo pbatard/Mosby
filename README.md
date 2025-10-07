@@ -54,7 +54,11 @@ The motivations behind this are as follows:
    same very real risk of a third parties exploiting this data to install UEFI rootkits on
    users' computers.  
    With its default settings, this application can fully remedy that.
-5. OS manufacturers, such as Microsoft, have long taken a very user-adverse stance against
+5. As part of the 2023 certificate update, Microsoft is also introducing a new dedicated
+   Secure Boot certificate for Option ROMs, which older UEFI firmwares do not have and which
+   may prevent add-on cards from being able to initialize in a Secure Boot environment.
+   This application can remedy that.
+6. OS manufacturers, such as Microsoft, have long taken a very user-adverse stance against
    the ability of individuals to ultimately be in control the UEFI boot signing process, by,
    to name just a few instances, using fake rhetoric against some software licenses in order
    to arbitrarily deny common Linux bootloaders such as GRUB from being Secure Boot signed,
@@ -66,7 +70,7 @@ The motivations behind this are as follows:
    The end result is that it has become a lot more convoluted and daunting than it should
    really be for end-users, to make Secure Boot work in their favour.  
    This application can also remedy that.
-6. Figuring out SBAT, SkuSiPolicy as well as Microsoft's new SVN DBX based revocation updates
+7. Figuring out SBAT, SkuSiPolicy as well as Microsoft's new SVN DBX based revocation updates
    is currently a mess, as you need to wade through many different sources to try to ensure
    that your system is actually up to date with them (because if they aren't, an attacker can
    easily bypass Secure Boot on your system).  

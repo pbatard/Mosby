@@ -25,8 +25,8 @@ declare -A source=(
   [kek_ms1.cer]='https://go.microsoft.com/fwlink/?LinkId=321185'
   [kek_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=2239775'
   # db_ms1.cer below is in the process of being revoked by Microsoft. You cannot
-  # have it if you enable dbx_update_2024_all.bin, as the latter adds the former
-  # into the DBX database. However, since, even with the 2024.08 refresh, MS is
+  # have it if you enable dbx_update_2024_###.bin, as the latter adds the former
+  # into the DBX database. However, since, even with Windows 11 25H2, MS is
   # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
   # credentials, and the application of KB5025885 is still a massive mess, we
   # allow users to install it as part of an XOR set with dbx_update_2024_###.bin.
