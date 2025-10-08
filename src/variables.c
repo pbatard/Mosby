@@ -163,7 +163,7 @@ STATIC EFI_STATUS SetOsIndication(
 EFI_STATUS CheckSetupMode(VOID)
 {
 	EFI_STATUS Status;
-	UINT8 SecureBoot = 0, SetupMode = 0, CustomMode = 0, SetupModeAttempts = 0;
+	UINT8 SecureBoot = 0, SetupMode = 0, AuditMode = 0, CustomMode = 0, SetupModeAttempts = 0;
 	UINTN Size;
 	INTN Sel;
 
@@ -174,16 +174,23 @@ EFI_STATUS CheckSetupMode(VOID)
 	// Now that we have (possibly) read it, delete the variable
 	gRT->SetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gMosbyVariableGuid, 0, 0, NULL);
 
-	// Get the Secure Boot and Setup Mode status
+	// Get the Secure Boot, Setup Mode and Audit Mode status
 	Size = sizeof(SecureBoot);
 	Status = gRT->GetVariable(EFI_SECURE_BOOT_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SecureBoot);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"This platform does not support Secure Boot.\n");
 
+	// Also make sure that Audit Mode is not set (but don't care if the variable can't be read)
+	// See https://uefi.org/specs/UEFI/2.9_A/_images/Secure_Boot_and_Driver_Signing-5.png
+	// Technically we should also validate that DeployedMode is 0, but no specs compliant
+	// firmware can have DeployedMode and SetupMode set simultaneously.
+	Size = sizeof(AuditMode);
+	gRT->GetVariable(L"AuditMode", &gEfiGlobalVariableGuid, NULL, &Size, &AuditMode);
+
 	Size = sizeof(SetupMode);
 	Status = gRT->GetVariable(EFI_SETUP_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
 
-	if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE) {
+	if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE || AuditMode != 0) {
 		RecallPrint(L"ERROR: Setup Mode not enabled (Attempt #%d)\n", SetupModeAttempts + 1);
 		// Unfortunately, while EDK2 makes DeletePlatformKey() publicly available, which
 		// should allow us to toggle Setup Mode, most modern platforms prevent the call
