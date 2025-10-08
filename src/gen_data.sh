@@ -65,22 +65,29 @@ declare -A exclusive_set=(
 )
 
 # Optional description for specific files
-# Needs to be updated manually on DBX update since Microsoft stupidly decided to
+# Date needs to be updated manually on DBX update since Microsoft stupidly decided to
 # hardcode the EFI_TIME timestamp of ALL authenticated list updates to 2010.03.06
 # instead of using the actual timestamp of when they create the variables...
+# Oh, and despite this opening the door for rollback attacks, Microsoft is refusing
+# to budge on this per https://github.com/microsoft/secureboot_objects/issues/157.
+# NB: DBX date is the date of the commit that updated the post signed objects.
+# SVN number and date can be obtained from the "svns" section of the latest .json
+# at https://github.com/microsoft/secureboot_objects/tree/main/PreSignedObjects/DBX.
+# And yes, technically, there's more than the Bootmgr SVN in there, but what we are
+# really interested in, and want to report to the user, is the Bootmgr SVN value.
 declare -A description=(
   [dbx_x64.bin]='DBX for x86 (64 bit) [2025.06.11]'
-  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.01.14]'
-  [dbx_aa64.bin]='DBX for ARM (64 bit) [2023.05.09]'
-  [dbx_arm.bin]='DBX for ARM (32 bit) [2023.05.09]'
+  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.02.24]'
+  [dbx_aa64.bin]='DBX for ARM (64 bit) [2025.02.24]'
+  [dbx_arm.bin]='DBX for ARM (32 bit) [2025.02.24]'
   [dbx_update_2024_x64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_x64.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_svn_x64.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
   [dbx_update_2024_ia32.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_ia32.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_svn_ia32.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
   [dbx_update_2024_aa64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_aa64.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_svn_aa64.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
   [dbx_update_2024_arm.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_arm.bin]="Microsoft's 'Secure Version Number' DBX entries [2025.01]"
+  [dbx_update_svn_arm.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
 )
 
 declare -A archguard=(

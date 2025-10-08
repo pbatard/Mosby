@@ -7651,7 +7651,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_svn_ia32.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdateSVN.bin";
-	List->Entry[List->Size].Description = "Microsoft's 'Secure Version Number' DBX entries [2025.01]";
+	List->Entry[List->Size].Description = "Windows Bootmgr SVN 7.0 DBX update [2025-06-06]";
 	List->Entry[List->Size].Buffer.Data = dbx_update_svn_ia32_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_update_svn_ia32_bin_len;
 	List->Size++;
@@ -7721,7 +7721,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_arm.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin";
-	List->Entry[List->Size].Description = "DBX for ARM (32 bit) [2023.05.09]";
+	List->Entry[List->Size].Description = "DBX for ARM (32 bit) [2025.02.24]";
 	List->Entry[List->Size].Buffer.Data = dbx_arm_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_arm_bin_len;
 	List->Size++;
@@ -7732,7 +7732,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_svn_aa64.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdateSVN.bin";
-	List->Entry[List->Size].Description = "Microsoft's 'Secure Version Number' DBX entries [2025.01]";
+	List->Entry[List->Size].Description = "Windows Bootmgr SVN 7.0 DBX update [2025-06-06]";
 	List->Entry[List->Size].Buffer.Data = dbx_update_svn_aa64_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_update_svn_aa64_bin_len;
 	List->Size++;
@@ -7755,7 +7755,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_svn_arm.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdateSVN.bin";
-	List->Entry[List->Size].Description = "Microsoft's 'Secure Version Number' DBX entries [2025.01]";
+	List->Entry[List->Size].Description = "Windows Bootmgr SVN 7.0 DBX update [2025-06-06]";
 	List->Entry[List->Size].Buffer.Data = dbx_update_svn_arm_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_update_svn_arm_bin_len;
 	List->Size++;
@@ -7766,7 +7766,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_update_svn_x64.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdateSVN.bin";
-	List->Entry[List->Size].Description = "Microsoft's 'Secure Version Number' DBX entries [2025.01]";
+	List->Entry[List->Size].Description = "Windows Bootmgr SVN 7.0 DBX update [2025-06-06]";
 	List->Entry[List->Size].Buffer.Data = dbx_update_svn_x64_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_update_svn_x64_bin_len;
 	List->Size++;
@@ -7806,7 +7806,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_aa64.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin";
-	List->Entry[List->Size].Description = "DBX for ARM (64 bit) [2023.05.09]";
+	List->Entry[List->Size].Description = "DBX for ARM (64 bit) [2025.02.24]";
 	List->Entry[List->Size].Buffer.Data = dbx_aa64_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_aa64_bin_len;
 	List->Size++;
@@ -7828,7 +7828,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_ia32.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin";
-	List->Entry[List->Size].Description = "DBX for x86 (32 bit) [2025.01.14]";
+	List->Entry[List->Size].Description = "DBX for x86 (32 bit) [2025.02.24]";
 	List->Entry[List->Size].Buffer.Data = dbx_ia32_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_ia32_bin_len;
 	List->Size++;
