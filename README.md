@@ -116,6 +116,7 @@ variable to the data you want to install for it.
 * `-v`: Display the application version and exit.
 * `-i`: Display information about the embedded data installable by the application, as well
         as the current SBAT data from the system (if SBAT is set).
+* `-n`: No file logging (disables appending the screen ouput to `Mosby.log`).
 * `-s`: Silent option (Removes some of the early and late prompts).
 * `-u`: Update only: Only update the revocation databases, SBAT, and SSPV/SSPU as needed.
 * `-t`: Test mode. Disables some checks and enables the internal **low security** Random

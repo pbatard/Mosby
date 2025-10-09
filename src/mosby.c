@@ -221,7 +221,7 @@ EFI_STATUS EFIAPI efi_main(
 )
 {
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE;
-	BOOLEAN Append = FALSE, Reboot = FALSE;
+	BOOLEAN Append = FALSE, Reboot = FALSE, LogToFile = TRUE;
 	EFI_STATUS Status;
 	EFI_TIME Time;
 	UINT8 Set = MOSBY_SET1;
@@ -247,7 +247,7 @@ EFI_STATUS EFIAPI efi_main(
 		ArgvCopy = Argv;
 		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-h] [-i] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
+				Print(L"Usage: Mosby [-h] [-i] [-n] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
@@ -278,6 +278,10 @@ EFI_STATUS EFIAPI efi_main(
 					SafeFree(SBat);
 				}
 				goto exit;
+			} else if (StrCmp(ArgvCopy[1], L"-n") == 0) {
+				LogToFile = FALSE;
+				ArgvCopy += 1;
+				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-s") == 0) {
 				gOptionSilent = TRUE;
 				ArgvCopy += 1;
@@ -317,7 +321,8 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* Initialize the file logger */
-	OpenLogger(gBaseImageHandle, L"Mosby.log");
+	if (LogToFile)
+		OpenLogger(gBaseImageHandle, L"Mosby.log");
 	PrintSystemInfo();
 	if (UpdateMode)
 		goto process_binaries;
