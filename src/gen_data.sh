@@ -76,8 +76,8 @@ declare -A exclusive_set=(
 # And yes, technically, there's more than the Bootmgr SVN in there, but what we are
 # really interested in, and want to report to the user, is the Bootmgr SVN value.
 declare -A description=(
-  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.06.11]'
-  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.02.24]'
+  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.10.16]'
+  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.10.16]'
   [dbx_aa64.bin]='DBX for ARM (64 bit) [2025.02.24]'
   [dbx_arm.bin]='DBX for ARM (32 bit) [2025.02.24]'
   [dbx_update_2024_x64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
