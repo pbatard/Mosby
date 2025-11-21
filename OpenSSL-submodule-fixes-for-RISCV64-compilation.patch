@@ -1,6 +1,6 @@
-From b7f3fefcc4d946c78c2ab0a500e969632e593723 Mon Sep 17 00:00:00 2001
+From 44b9d6c118b6dc4d7693c35cb1d193934de20ac3 Mon Sep 17 00:00:00 2001
 From: Pete Batard <pete@akeo.ie>
-Date: Mon, 27 Jan 2025 20:38:04 +0000
+Date: Fri, 21 Nov 2025 18:43:36 +0000
 Subject: [PATCH] OpenSSL submodule fixes for RISCV64 compilation
 
 ---
@@ -9,17 +9,17 @@ Subject: [PATCH] OpenSSL submodule fixes for RISCV64 compilation
  crypto/ec/ec_ameth.c                                  | 3 ++-
  crypto/evp/evp_enc.c                                  | 2 +-
  providers/implementations/include/prov/ciphercommon.h | 2 +-
- providers/implementations/include/prov/digestcommon.h | 2 +-
+ providers/implementations/include/prov/digestcommon.h | 4 ++--
  providers/implementations/macs/hmac_prov.c            | 2 +-
  providers/implementations/signature/ecdsa_sig.c       | 2 +-
  providers/implementations/signature/rsa_sig.c         | 2 +-
- 9 files changed, 10 insertions(+), 9 deletions(-)
+ 9 files changed, 11 insertions(+), 10 deletions(-)
 
 diff --git a/crypto/ec/curve448/curve448.c b/crypto/ec/curve448/curve448.c
-index 6928d9693c..7ddd617a73 100644
+index 1db78ee5c6..44217c74ac 100644
 --- a/crypto/ec/curve448/curve448.c
 +++ b/crypto/ec/curve448/curve448.c
-@@ -509,7 +509,7 @@ struct smvt_control {
+@@ -510,7 +510,7 @@ struct smvt_control {
      int power, addend;
  };
  
@@ -29,7 +29,7 @@ index 6928d9693c..7ddd617a73 100644
  #else
  # define NUMTRAILINGZEROS       numtrailingzeros
 diff --git a/crypto/ec/curve448/point_448.h b/crypto/ec/curve448/point_448.h
-index e67ea68044..72536c2471 100644
+index 96a54558d6..dfe01ecaa2 100644
 --- a/crypto/ec/curve448/point_448.h
 +++ b/crypto/ec/curve448/point_448.h
 @@ -181,7 +181,7 @@ static ossl_inline void curve448_scalar_copy(curve448_scalar_t out,
@@ -42,7 +42,7 @@ index e67ea68044..72536c2471 100644
  
  /*
 diff --git a/crypto/ec/ec_ameth.c b/crypto/ec/ec_ameth.c
-index d4348ff244..cac8672354 100644
+index ad28ba6827..ea67f35769 100644
 --- a/crypto/ec/ec_ameth.c
 +++ b/crypto/ec/ec_ameth.c
 @@ -161,12 +161,13 @@ static int eckey_priv_decode_ex(EVP_PKEY *pkey, const PKCS8_PRIV_KEY_INFO *p8,
@@ -61,10 +61,10 @@ index d4348ff244..cac8672354 100644
          ERR_raise(ERR_LIB_EC, EC_R_DECODE_ERROR);
          return 0;
 diff --git a/crypto/evp/evp_enc.c b/crypto/evp/evp_enc.c
-index 4e6f83e3d0..6cac709644 100644
+index eee00a0780..37108a6a5c 100644
 --- a/crypto/evp/evp_enc.c
 +++ b/crypto/evp/evp_enc.c
-@@ -1423,7 +1423,7 @@ int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)
+@@ -1790,7 +1790,7 @@ int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)
  
      EVP_CIPHER_CTX_reset(out);
  
@@ -74,10 +74,10 @@ index 4e6f83e3d0..6cac709644 100644
  
      if (in->fetched_cipher != NULL && !EVP_CIPHER_up_ref(in->fetched_cipher)) {
 diff --git a/providers/implementations/include/prov/ciphercommon.h b/providers/implementations/include/prov/ciphercommon.h
-index aacd49707f..03c25cbb1f 100644
+index 46efdc8003..0c54c6e57a 100644
 --- a/providers/implementations/include/prov/ciphercommon.h
 +++ b/providers/implementations/include/prov/ciphercommon.h
-@@ -317,7 +317,7 @@ static void name(PROV_CIPHER_CTX *dst, const PROV_CIPHER_CTX *src)             \
+@@ -327,7 +327,7 @@ static void name(PROV_CIPHER_CTX *dst, const PROV_CIPHER_CTX *src)             \
      CTX_TYPE *sctx = (CTX_TYPE *)src;                                          \
      CTX_TYPE *dctx = (CTX_TYPE *)dst;                                          \
                                                                                 \
@@ -87,10 +87,10 @@ index aacd49707f..03c25cbb1f 100644
  }
  
 diff --git a/providers/implementations/include/prov/digestcommon.h b/providers/implementations/include/prov/digestcommon.h
-index abdb8bb2ad..7e299501c4 100644
+index 332d473490..d12ce27126 100644
 --- a/providers/implementations/include/prov/digestcommon.h
 +++ b/providers/implementations/include/prov/digestcommon.h
-@@ -67,7 +67,7 @@ static void *name##_dupctx(void *ctx)                                          \
+@@ -67,14 +67,14 @@ static void *name##_dupctx(void *ctx)                                          \
      CTX *in = (CTX *)ctx;                                                      \
      CTX *ret = ossl_prov_is_running() ? OPENSSL_malloc(sizeof(*ret)) : NULL;   \
      if (ret != NULL)                                                           \
@@ -98,12 +98,20 @@ index abdb8bb2ad..7e299501c4 100644
 +        memcpy(ret, in, sizeof(*ret));                                         \
      return ret;                                                                \
  }                                                                              \
+ static void name##_copyctx(void *voutctx, void *vinctx)                        \
+ {                                                                              \
+     CTX *outctx = (CTX *)voutctx;                                              \
+     CTX *inctx = (CTX *)vinctx;                                                \
+-    *outctx = *inctx;                                                          \
++    memcpy(outctx, inctx, sizeof(CTX));                                                          \
+ }                                                                              \
  PROV_FUNC_DIGEST_FINAL(name, dgstsize, fin)                                    \
+ PROV_FUNC_DIGEST_GET_PARAM(name, blksize, dgstsize, flags)                     \
 diff --git a/providers/implementations/macs/hmac_prov.c b/providers/implementations/macs/hmac_prov.c
-index 52ebb08b8f..4bfe4ca675 100644
+index e9c3087027..d8ca1fb974 100644
 --- a/providers/implementations/macs/hmac_prov.c
 +++ b/providers/implementations/macs/hmac_prov.c
-@@ -112,7 +112,7 @@ static void *hmac_dup(void *vsrc)
+@@ -116,7 +116,7 @@ static void *hmac_dup(void *vsrc)
          return NULL;
  
      ctx = dst->ctx;
@@ -113,25 +121,25 @@ index 52ebb08b8f..4bfe4ca675 100644
      dst->key = NULL;
      memset(&dst->digest, 0, sizeof(dst->digest));
 diff --git a/providers/implementations/signature/ecdsa_sig.c b/providers/implementations/signature/ecdsa_sig.c
-index 865d49d100..472add01f2 100644
+index 4018a772ff..bc496ffa35 100644
 --- a/providers/implementations/signature/ecdsa_sig.c
 +++ b/providers/implementations/signature/ecdsa_sig.c
-@@ -399,7 +399,7 @@ static void *ecdsa_dupctx(void *vctx)
+@@ -638,7 +638,7 @@ static void *ecdsa_dupctx(void *vctx)
      if (dstctx == NULL)
          return NULL;
  
 -    *dstctx = *srcctx;
 +    memcpy(dstctx, srcctx, sizeof(*dstctx));
      dstctx->ec = NULL;
-     dstctx->md = NULL;
-     dstctx->mdctx = NULL;
+     dstctx->propq = NULL;
+ 
 diff --git a/providers/implementations/signature/rsa_sig.c b/providers/implementations/signature/rsa_sig.c
-index 919ef17269..540bea8814 100644
+index e75b90840b..8e83a7a67c 100644
 --- a/providers/implementations/signature/rsa_sig.c
 +++ b/providers/implementations/signature/rsa_sig.c
-@@ -994,7 +994,7 @@ static void *rsa_dupctx(void *vprsactx)
+@@ -1343,7 +1343,7 @@ static void *rsa_dupctx(void *vprsactx)
+     if (dstctx == NULL)
          return NULL;
-     }
  
 -    *dstctx = *srcctx;
 +    memcpy(dstctx, srcctx, sizeof(*dstctx));
@@ -139,5 +147,5 @@ index 919ef17269..540bea8814 100644
      dstctx->md = NULL;
      dstctx->mgf1_md = NULL;
 -- 
-2.45.2.windows.1
+2.52.0.windows.1
 

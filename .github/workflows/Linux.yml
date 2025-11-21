@@ -70,8 +70,8 @@ jobs:
         sudo apt-get update
         sudo apt-get -y --no-install-recommends install python3-setuptools uuid-dev ${{ matrix.TARGET_PKGS }}
         if [[ "${{ matrix.TARGET_ARCH }}" == "LOONGARCH64" ]]; then
-          curl -L -O https://github.com/loongson/build-tools/releases/download/2024.11.01/x86_64-cross-tools-loongarch64-binutils_2.43.1-gcc_14.2.0-glibc_2.40.tar.xz
-          tar -xJf x86_64-cross-tools-loongarch64-binutils_2.43.1-gcc_14.2.0-glibc_2.40.tar.xz
+          curl -L -O https://github.com/loongson/build-tools/releases/download/2025.08.08/x86_64-cross-tools-loongarch64-binutils_2.45-gcc_15.1.0-glibc_2.42.tar.xz
+          tar -xJf x86_64-cross-tools-loongarch64-binutils_2.45-gcc_15.1.0-glibc_2.42.tar.xz
           echo "$PWD/cross-tools/bin" >> "$GITHUB_PATH"
         fi
 
@@ -94,7 +94,7 @@ jobs:
         mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/Mosby.efi Mosby_${{ matrix.TARGET_TYPE }}.efi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: ${{ matrix.TARGET_TYPE }}
         path: ./*.efi
@@ -119,7 +119,7 @@ jobs:
       run: echo "version=$(git describe --tags)" >> $GITHUB_OUTPUT
 
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
 
     - name: Create release archive
       run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./Mosby.nsh ./*/*.efi

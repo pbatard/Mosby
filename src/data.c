@@ -7629,7 +7629,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_x64.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin";
-	List->Entry[List->Size].Description = "DBX for x86 (64 bit) [2025.06.11]";
+	List->Entry[List->Size].Description = "DBX for x86 (64 bit) [2025.10.16]";
 	List->Entry[List->Size].Buffer.Data = dbx_x64_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_x64_bin_len;
 	List->Size++;
@@ -7640,7 +7640,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
 	List->Entry[List->Size].Path = L"dbx_ia32.bin";
 	List->Entry[List->Size].Url = "https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin";
-	List->Entry[List->Size].Description = "DBX for x86 (32 bit) [2025.02.24]";
+	List->Entry[List->Size].Description = "DBX for x86 (32 bit) [2025.10.16]";
 	List->Entry[List->Size].Buffer.Data = dbx_ia32_bin;
 	List->Entry[List->Size].Buffer.Size = dbx_ia32_bin_len;
 	List->Size++;
