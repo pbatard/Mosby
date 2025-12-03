@@ -23,6 +23,7 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PrintLib.h>
+#include <Library/TimeBaseLib.h> 
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/UefiLib.h>
@@ -380,6 +381,35 @@ VOID ConsoleReset(VOID)
 	Console->ClearScreen(Console);
 }
 
+EFI_STATUS GetLocalTime(EFI_TIME *Time)
+{
+	EFI_TIME InternalTime;
+	EFI_STATUS Status;
+	UINT64 Epoch;
+
+	Status = gRT->GetTime(&InternalTime, NULL);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	// Convert EFI_TIME to Unix epoch
+	Epoch = EfiTimeToEpoch(&InternalTime);
+
+	// Apply timezone correction
+	if (InternalTime.TimeZone != EFI_UNSPECIFIED_TIMEZONE)
+		Epoch += (INTN)InternalTime.TimeZone * 60;
+
+	// Apply DST
+	if (InternalTime.Daylight & EFI_TIME_IN_DAYLIGHT)
+		Epoch -= 3600;
+
+	// Convert back to EFI_TIME
+	EpochToEfiTime(Epoch, Time);
+	Time->TimeZone = 0;
+	Time->Daylight = 0;
+
+	return EFI_SUCCESS;
+}
+
 EFI_STATUS OpenLogger(
 	IN CONST EFI_HANDLE Image,
 	IN CONST CHAR16 *Path
@@ -392,10 +422,9 @@ EFI_STATUS OpenLogger(
 	CONST CHAR16 *PathStart;
 
 	StrCpyS(LogPath, 80, Path); 
-	gRT->GetTime(&Time, NULL);
-	// Timezone conversion would be fine, but DST is too much of a PITA, so UTC it is...
+	GetLocalTime(&Time);
 	UnicodeSPrint(TimeStamp, MAX_LINE_SIZE * sizeof(CHAR16),
-		L"%s[Mosby session started: %4u-%02u-%02u %02u:%02u:%02u [UTC]\n",
+		L"%s[Mosby session started: %4u-%02u-%02u %02u:%02u:%02u]\n",
 		SimpleFileExistsByPath(Image, Path) ? L"\r\n" : L"\uFEFF",
 		Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
 
@@ -417,9 +446,9 @@ VOID CloseLogger(VOID)
 	if (LogHandle == NULL)
 		return;
 
-	gRT->GetTime(&Time, NULL);
+	GetLocalTime(&Time);
 	UnicodeSPrint(TimeStamp, MAX_LINE_SIZE * sizeof(CHAR16),
-		L"[Mosby session ended: %4u-%02u-%02u %02u:%02u:%02u [UTC]\n",
+		L"[Mosby session ended: %4u-%02u-%02u %02u:%02u:%02u]\n",
 		Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
 	SimpleFileWriteAll(LogHandle, StrLen(TimeStamp) * sizeof(CHAR16), TimeStamp);
 	SimpleFileClose(LogHandle);
