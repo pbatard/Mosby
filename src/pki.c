@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
- * Copyright © 2024 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -374,13 +374,13 @@ EFI_STATUS CertToAuthVar(
 	Size = (INTN)i2d_X509((X509*)Cert, NULL);
 	if (Size <= 0)
 		goto exit;
-	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size);
+	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA) - 1 + Size);
 	if (Esl == NULL)
 		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate ESL\n");
 
 	CopyGuid(&Esl->SignatureType, &gEfiCertX509Guid);
-	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + Size;
 	Esl->SignatureSize = sizeof(EFI_SIGNATURE_DATA) - 1 + Size;
+	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + Esl->SignatureSize;
 
 	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
 	Ptr = &Data->SignatureData[0];
@@ -497,19 +497,25 @@ EFI_STATUS PopulateAuthVar(
 			goto exit;
 	}
 
-	// Check for an unsigned ESL
+	// Finally, check for an unsigned ESL
 	Esl = (EFI_SIGNATURE_LIST*)Entry->Buffer.Data;
-	if (Esl->SignatureListSize == Entry->Buffer.Size) {
-		Entry->Variable.Size = Esl->SignatureListSize;
-		Entry->Variable.Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
-		// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
-		Status = CreateTimeBasedPayload(&Entry->Variable.Size, (UINT8**)&Entry->Variable.Data, &mTime);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
-		Entry->Buffer.Data = NULL;	// CreateTimeBasedPayload freed Esl = Buffer already
+	// An ESL list can contain multiple concatenated ESLs
+	while ((UINTN)Esl < (UINTN)&Entry->Buffer.Data[Entry->Buffer.Size]) {
+		if (Esl->SignatureListSize > Entry->Buffer.Size)
+			ReportErrorAndExit(L"Invalid unsigned ESL '%s'\n", Entry->Path);
+		Esl = (EFI_SIGNATURE_LIST*)&((UINT8*)Esl)[Esl->SignatureListSize];
 	}
-
-	ReportErrorAndExit(L"Failed to process '%s'\n", Entry->Path);
+	// Last ESL should end on our buffer
+	if ((UINTN)Esl != (UINTN)&Entry->Buffer.Data[Entry->Buffer.Size])
+		ReportErrorAndExit(L"Invalid unsigned ESL '%s'\n", Entry->Path);
+	
+	Entry->Variable.Size = Entry->Buffer.Size;
+	Entry->Variable.Data = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;
+	// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
+	Status = CreateTimeBasedPayload(&Entry->Variable.Size, (UINT8**)&Entry->Variable.Data, &mTime);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
+	Entry->Buffer.Data = NULL;	// Don't double free our data
 
 exit:
 	BIO_free(bio);
