@@ -224,6 +224,11 @@ EFI_STATUS EFIAPI efi_main(
 	BOOLEAN Append = FALSE, Reboot = FALSE, LogToFile = TRUE;
 	EFI_STATUS Status;
 	EFI_TIME Time;
+#if defined(_M_X64) || defined(__x86_64__)	
+	EFI_SIGNATURE_LIST* Esl[8] = { 0 };
+	UINTN EslIndex, EslOffset;
+	UINT8 *MergedEsl = NULL;
+#endif
 	UINT8 Set = MOSBY_SET1;
 	UINTN i, Size;
 	UINT16* SystemSSPV = NULL;
@@ -550,6 +555,64 @@ process_binaries:
 		List.Size++;
 	}
 
+#if defined(_M_X64) || defined(__x86_64__)
+	/*
+	 * There appears to be a whole sway of AMI UEFI firmwares with a rather unfortunate bug,
+	 * that prevents appending to an existing KEK store. Which means that, on the affected
+	 * systems, if we try to write more than one KEK, using multiple SetVariable() calls,
+	 * only the first call succeeds and all subsequent ones fail with EFI_INVALID_PARAMETER.
+	 * To work around this and since any unsigned KEK we processed above should already have
+	 * been converted to an ESL (embedded in an EFI_VARIABLE_AUTHENTICATION_2 struct), we
+	 * concatenate all these ESLs into a single array, which can then be written through a
+	 * single SetVariable() operation.
+	 * For more on this, see https://github.com/pbatard/Mosby/issues/14.
+	 */
+	EslIndex = 0;
+	for (i = 0;  i < List.Size; i++) {
+		/* Only process valid KEK entries for which we have a variable */
+		if (List.Entry[i].Type != KEK || List.Entry[i].Variable.Data == NULL)
+			continue;
+		/* Only process variables for which we have an *unsigned* ESL */
+		if (List.Entry[i].Flags & ALLOW_UPDATE)
+			continue;
+		if (EslIndex >= ARRAY_SIZE(Esl))
+			Abort(EFI_INVALID_PARAMETER, L"More than %d KEKs to merge - Aborting\n", ARRAY_SIZE(Esl));
+		if (List.Entry[i].Description != NULL)
+			RecallPrint(L"Adding '%a' to Merged KEK List\n", List.Entry[i].Description);
+		else
+			RecallPrint(L"Adding '%s' to Merged KEK List\n", List.Entry[i].Path);
+		/* Get the ESL data from EFI_VARIABLE_AUTHENTICATION_2 (at .AuthInfo.CertData) */
+		Esl[EslIndex++] = (EFI_SIGNATURE_LIST*)&((UINT8*)List.Entry[i].Variable.Data)[
+			OFFSET_OF(EFI_VARIABLE_AUTHENTICATION_2, AuthInfo) +
+			OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData)];
+		/* Remove the individual KEK from our installation list, since it will be merged */
+		List.Entry[i].Flags |= NO_INSTALL;
+	}
+	/* Now concatenate all the ESLs from above into an array and create the variable */
+	if (EslIndex > 0 && List.Size < ARRAY_SIZE(List.Entry)) {
+		List.Entry[List.Size].Buffer.Size = 0;
+		for (i = 0; i < EslIndex; i++)
+			List.Entry[List.Size].Buffer.Size += Esl[i]->SignatureListSize;
+		MergedEsl = AllocateZeroPool(List.Entry[List.Size].Buffer.Size);
+		if (MergedEsl == NULL)
+			Abort(EFI_OUT_OF_RESOURCES, L"Could not allocate data to merge KEKs\n");
+		for (EslOffset = 0, i = 0; i < EslIndex; i++) {
+			CopyMem(&MergedEsl[EslOffset], Esl[i], Esl[i]->SignatureListSize);
+			EslOffset += Esl[i]->SignatureListSize;
+			FreePool(Esl[i]);
+		}
+		List.Entry[List.Size].Buffer.Data = MergedEsl;
+		List.Entry[List.Size].Type = KEK;
+		List.Entry[List.Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
+		List.Entry[List.Size].Description = "Merged KEK List";
+		List.Entry[List.Size].Path = L"Merged KEK List";
+		Status = PopulateAuthVar(&List.Entry[List.Size]);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to create merged KEK variable - Aborting\n");
+		List.Size++;
+	}
+#endif
+
 	/* EDK2 provides a DeleteSecureBootVariables(), so we might as well call it. */
 	DeleteSecureBootVariables();
 
@@ -586,6 +649,9 @@ exit:
 	for (i = 0; i < List.Size; i++)
 		FreePool(List.Entry[i].Variable.Data);
 	FreePool(Argv);
+#if defined(_M_X64) || defined(__x86_64__)	
+	FreePool(MergedEsl);
+#endif
 	RecallPrintFree();
 	CloseLogger();
 	if (Reboot) {
