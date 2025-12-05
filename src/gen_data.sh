@@ -20,48 +20,47 @@ get_commit_date() {
   fi
 }
 
-# The binaries we want to embedd and their URLs
-declare -A source=(
-  [kek_ms1.cer]='https://go.microsoft.com/fwlink/?LinkId=321185'
-  [kek_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=2239775'
-  # db_ms1.cer below is in the process of being revoked by Microsoft. You cannot
-  # have it if you enable dbx_update_2024_###.bin, as the latter adds the former
-  # into the DBX database. However, since, even with Windows 11 25H2, MS is
-  # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
-  # credentials, and the application of KB5025885 is still a massive mess, we
-  # allow users to install it as part of an XOR set with dbx_update_2024_###.bin.
-  [db_ms1.cer]='https://go.microsoft.com/fwlink/?linkid=321192'
-  [db_ms2.cer]='https://go.microsoft.com/fwlink/?linkid=321194'
-  [db_ms3.cer]='https://go.microsoft.com/fwlink/?linkid=2239776'
-  [db_ms4.cer]='https://go.microsoft.com/fwlink/?linkid=2239872'
-  [db_ms5.cer]='https://go.microsoft.com/fwlink/?linkid=2284009'
-  # https://github.com/microsoft/secureboot_objects is now THE reference for all DBX binaries
-  [dbx_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin'
-  [dbx_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin'
-  [dbx_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin'
-  [dbx_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin'
-  # At last, Microsoft has made these available publicly!
-  [dbx_update_2024_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdate2024.bin'
-  [dbx_update_svn_x64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdateSVN.bin'
-  [dbx_update_2024_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdate2024.bin'
-  [dbx_update_svn_ia32.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdateSVN.bin'
-  [dbx_update_2024_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdate2024.bin'
-  [dbx_update_svn_aa64.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdateSVN.bin'
-  [dbx_update_2024_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdate2024.bin'
-  [dbx_update_svn_arm.bin]='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdateSVN.bin'
-  # Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
-  # See: https://github.com/rhboot/shim/issues/685
-  [sbat_level.txt]='https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt'
-  # Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't make these public yet.
-  [ssp_var_defs.h]='https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h'
-)
+# The binaries we want to embedd and their URLs.
+declare -A source; declare -a order;
+source['kek_2011_ms.cer']='https://go.microsoft.com/fwlink/?LinkId=321185'; order+=('kek_2011_ms.cer');
+source['kek_2023_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239775'; order+=('kek_2023_ms.cer');
+# db_2011_win_ms.cer is in the process of being revoked by Microsoft. You cannot
+# have it if you enable dbx_update_2024_###.bin, as the latter adds the former
+# into the DBX database. However, since, even with Windows 11 25H2, MS is
+# *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
+# credentials, and the application of KB5025885 is still a massive mess, we
+# allow users to install it as part of an XOR set with dbx_update_2024_###.bin.
+source['db_2011_win_ms.cer']='https://go.microsoft.com/fwlink/?linkid=321192'; order+=('db_2011_win_ms.cer');
+source['db_2011_3rd_ms.cer']='https://go.microsoft.com/fwlink/?linkid=321194'; order+=('db_2011_3rd_ms.cer');
+source['db_2023_win_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239776'; order+=('db_2023_win_ms.cer');
+source['db_2023_3rd_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239872'; order+=('db_2023_3rd_ms.cer');
+source['db_2023_opt_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2284009'; order+=('db_2023_opt_ms.cer');
+# https://github.com/microsoft/secureboot_objects is now THE reference for all DBX binaries
+source['dbx_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin'; order+=('dbx_x64.bin');
+source['dbx_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin'; order+=('dbx_ia32.bin');
+source['dbx_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin'; order+=('dbx_aa64.bin');
+source['dbx_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin'; order+=('dbx_arm.bin');
+# At last, Microsoft has made these available publicly!
+source['dbx_update_2024_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdate2024.bin'; order+=('dbx_update_2024_x64.bin');
+source['dbx_update_svn_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdateSVN.bin'; order+=('dbx_update_svn_x64.bin');
+source['dbx_update_2024_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdate2024.bin'; order+=('dbx_update_2024_ia32.bin');
+source['dbx_update_svn_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdateSVN.bin'; order+=('dbx_update_svn_ia32.bin');
+source['dbx_update_2024_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdate2024.bin'; order+=('dbx_update_2024_aa64.bin');
+source['dbx_update_svn_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdateSVN.bin'; order+=('dbx_update_svn_aa64.bin');
+source['dbx_update_2024_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdate2024.bin'; order+=('dbx_update_2024_arm.bin');
+source['dbx_update_svn_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdateSVN.bin'; order+=('dbx_update_svn_arm.bin');
+# Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
+# See: https://github.com/rhboot/shim/issues/685
+source['sbat_level.txt']='https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt'; order+=('sbat_level.txt');
+# Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't make these public yet.
+source['ssp_var_defs.h']='https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h'; order+=('ssp_var_defs.h');
 
 declare -A exclusive_set=(
-  [db_ms1.cer]='MOSBY_SET1'
-  [dbx_update_2024_x64.bin]='MOSBY_SET2'
-  [dbx_update_2024_ia32.bin]='MOSBY_SET2'
-  [dbx_update_2024_aa64.bin]='MOSBY_SET2'
-  [dbx_update_2024_arm.bin]='MOSBY_SET2'
+  ['db_2011_win_ms.cer']='MOSBY_SET1'
+  ['dbx_update_2024_x64.bin']='MOSBY_SET2'
+  ['dbx_update_2024_ia32.bin']='MOSBY_SET2'
+  ['dbx_update_2024_aa64.bin']='MOSBY_SET2'
+  ['dbx_update_2024_arm.bin']='MOSBY_SET2'
 )
 
 # Optional description for specific files
@@ -76,31 +75,31 @@ declare -A exclusive_set=(
 # And yes, technically, there's more than the Bootmgr SVN in there, but what we are
 # really interested in, and want to report to the user, is the Bootmgr SVN value.
 declare -A description=(
-  [dbx_x64.bin]='DBX for x86 (64 bit) [2025.10.16]'
-  [dbx_ia32.bin]='DBX for x86 (32 bit) [2025.10.16]'
-  [dbx_aa64.bin]='DBX for ARM (64 bit) [2025.02.24]'
-  [dbx_arm.bin]='DBX for ARM (32 bit) [2025.02.24]'
-  [dbx_update_2024_x64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_x64.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  [dbx_update_2024_ia32.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_ia32.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  [dbx_update_2024_aa64.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_aa64.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  [dbx_update_2024_arm.bin]="Revocation of 'Microsoft Windows Production PCA 2011'"
-  [dbx_update_svn_arm.bin]="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
+  ['dbx_x64.bin']='DBX for x86 (64 bit) [2025.10.16]'
+  ['dbx_ia32.bin']='DBX for x86 (32 bit) [2025.10.16]'
+  ['dbx_aa64.bin']='DBX for ARM (64 bit) [2025.02.24]'
+  ['dbx_arm.bin']='DBX for ARM (32 bit) [2025.02.24]'
+  ['dbx_update_2024_x64.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
+  ['dbx_update_svn_x64.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
+  ['dbx_update_2024_ia32.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
+  ['dbx_update_svn_ia32.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
+  ['dbx_update_2024_aa64.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
+  ['dbx_update_svn_aa64.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
+  ['dbx_update_2024_arm.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
+  ['dbx_update_svn_arm.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
 )
 
 declare -A archguard=(
-  [x64]='#if defined(_M_X64) || defined(__x86_64__)'
-  [ia32]='#if defined(_M_IX86) || defined(__i386__)'
-  [aa64]='#if defined (_M_ARM64) || defined(__aarch64__)'
-  [arm]='#if defined (_M_ARM) || defined(__arm__)'
-  [riscv64]='#if defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))'
+  ['x64']='#if defined(_M_X64) || defined(__x86_64__)'
+  ['ia32']='#if defined(_M_IX86) || defined(__i386__)'
+  ['aa64']='#if defined (_M_ARM64) || defined(__aarch64__)'
+  ['arm']='#if defined (_M_ARM) || defined(__arm__)'
+  ['riscv64']='#if defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))'
 )
 
 declare -A ssp_varname=(
-  [SSPU]='SkuSiPolicyUpdateSigners'
-  [SSPV]='SkuSiPolicyVersion'
+  ['SSPU']='SkuSiPolicyUpdateSigners'
+  ['SSPV']='SkuSiPolicyVersion'
 )
 
 # Using { ... } > some_file allows us to redirect everything between { and }
@@ -139,7 +138,7 @@ ssp_date_url="https://api.github.com/repos/rhboot/shim/commits?path=${ssp_date_u
 ssp_date="$(curl -s -L ${ssp_date_url} | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
 ssp_date=${ssp_date//-/.}
 
-for file in "${!source[@]}"; do
+for file in "${order[@]}"; do
   # '-o' will try to use an override from the current repo
   if [[ "$1" == "-o" &&  -f ../data/${file} ]]; then
     cp ../data/${file} .
@@ -173,8 +172,9 @@ for file in "${!source[@]}"; do
 done
 
 # Break down ssp_var_defs.h into 2 distinct SSPU and SSPV entries
-source[sspu_var_defs.h]=${source[ssp_var_defs.h]}
-source[sspv_var_defs.h]=${source[ssp_var_defs.h]}
+unset order[-1]
+source['sspu_var_defs.h']=${source['ssp_var_defs.h']}; order+=('sspu_var_defs.h');
+source['sspv_var_defs.h']=${source['ssp_var_defs.h']}; order+=('sspv_var_defs.h');
 unset source[ssp_var_defs.h]
 
 echo "EFI_STATUS InitializeList("
@@ -184,7 +184,7 @@ echo "{"
 echo "	if (MOSBY_MAX_LIST_SIZE < ${#source[@]})"
 echo "		return EFI_INVALID_PARAMETER;"
 echo "	ZeroMem(List, sizeof(MOSBY_LIST));"
-for file in "${!source[@]}"; do
+for file in "${order[@]}"; do
   data=${file%\.*}_${file##*\.}
   type=${file%%_*}
   type=${type^^}
