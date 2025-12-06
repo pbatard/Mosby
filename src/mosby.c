@@ -113,7 +113,7 @@ STATIC EFI_STATUS ReadVariable(
 )
 {
 	EFI_STATUS Status;
-	
+
 	*DataSize = 0;
 	*Data = NULL;
 	Status = gRT->GetVariable(VariableName, VendorGuid, NULL, DataSize, NULL);
@@ -224,11 +224,6 @@ EFI_STATUS EFIAPI efi_main(
 	BOOLEAN Append = FALSE, Reboot = FALSE, LogToFile = TRUE;
 	EFI_STATUS Status;
 	EFI_TIME Time;
-#if defined(_M_X64) || defined(__x86_64__)	
-	EFI_SIGNATURE_LIST* Esl[8] = { 0 };
-	UINTN EslIndex, EslOffset;
-	UINT8 *MergedEsl = NULL;
-#endif
 	UINT8 Set = MOSBY_SET1;
 	UINTN i, Size;
 	UINT16* SystemSSPV = NULL;
@@ -300,7 +295,7 @@ EFI_STATUS EFIAPI efi_main(
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-v") == 0) {
-				Print(L"Mosby %s %a\n", ARCH_EXT, VERSION_STRING);
+				Print(L"Mosby %a %s\n", VERSION_STRING, ARCH_EXT);
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-x") == 0) {
 				Set = MOSBY_SET2;
@@ -328,6 +323,7 @@ EFI_STATUS EFIAPI efi_main(
 	/* Initialize the file logger */
 	if (LogToFile)
 		OpenLogger(gBaseImageHandle, L"Mosby.log");
+	RecallPrint(L"Mosby %a %s\n", VERSION_STRING, ARCH_EXT);
 	PrintSystemInfo();
 	if (UpdateMode)
 		goto process_binaries;
@@ -455,7 +451,7 @@ process_binaries:
 	if (InstallSBatVer == 0)
 		Abort(EFI_NO_MAPPING, L"Internal error\n");
 	Status = ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat);
-	if (Status == EFI_SUCCESS) 
+	if (Status == EFI_SUCCESS)
 		SystemSBatVer = GetSBatVersion(SBat, Size);
 	if (TestMode)
 		Print(L"Provided SBAT: %d, System SBAT: %d\n", InstallSBatVer, SystemSBatVer);
@@ -555,7 +551,7 @@ process_binaries:
 		List.Size++;
 	}
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
 	/*
 	 * There appears to be a whole sway of AMI UEFI firmwares with a rather unfortunate bug,
 	 * that prevents appending to an existing KEK store. Which means that, on the affected
@@ -567,7 +563,9 @@ process_binaries:
 	 * single SetVariable() operation.
 	 * For more on this, see https://github.com/pbatard/Mosby/issues/14.
 	 */
-	EslIndex = 0;
+	EFI_SIGNATURE_LIST* Esl[8] = { 0 };
+	UINTN EslIndex = 0, EslOffset = 0;
+	UINT8 *MergedEsl = NULL;	 
 	for (i = 0;  i < List.Size; i++) {
 		/* Only process valid KEK entries for which we have a variable */
 		if (List.Entry[i].Type != KEK || List.Entry[i].Variable.Data == NULL)
@@ -610,6 +608,7 @@ process_binaries:
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"Failed to create merged KEK variable - Aborting\n");
 		List.Size++;
+		FreePool(MergedEsl);
 	}
 #endif
 
@@ -649,9 +648,6 @@ exit:
 	for (i = 0; i < List.Size; i++)
 		FreePool(List.Entry[i].Variable.Data);
 	FreePool(Argv);
-#if defined(_M_X64) || defined(__x86_64__)	
-	FreePool(MergedEsl);
-#endif
 	RecallPrintFree();
 	CloseLogger();
 	if (Reboot) {
