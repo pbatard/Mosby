@@ -83,6 +83,7 @@
 #define USE_BUFFER                  0x01
 #define NO_INSTALL                  0x02
 #define ALLOW_UPDATE                0x04
+#define USE_MICROSOFT_GUID          0x08
 
 /* Exclusive sets */
 #define MOSBY_SET1                  0x01
@@ -90,6 +91,12 @@
 
 /* Global Image Handle for the current executable */
 extern EFI_HANDLE gBaseImageHandle;
+
+/* Microsoft's EFI VendorGUID */
+extern EFI_GUID gEfiMicrosoftGuid;
+
+/* Mosby's EFI VendorGUID */
+extern EFI_GUID gEfiMosbyGuid;
 
 /* Types of Secure Boot variables this application is able to install */
 enum {

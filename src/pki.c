@@ -355,7 +355,8 @@ VOID FreeCredentials(
 
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
-	OUT MOSBY_VARIABLE *Variable
+	OUT MOSBY_VARIABLE *Variable,
+	IN CONST BOOLEAN UseMicrosoftGUID
 )
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
@@ -363,8 +364,6 @@ EFI_STATUS CertToAuthVar(
 	EFI_SIGNATURE_DATA *Data = NULL;
 	INTN Size;
 	UINT8 *Ptr;
-	EFI_GUID OwnerGuid;
-	UINT8 Sha1[SHA_DIGEST_LENGTH] = { 0 };
 
 	if (Cert == NULL || Variable == NULL)
 		return EFI_INVALID_PARAMETER;
@@ -386,15 +385,8 @@ EFI_STATUS CertToAuthVar(
 	Ptr = &Data->SignatureData[0];
 	i2d_X509((X509*)Cert, &Ptr);
 
-	// Derive the SignatureOwner GUID from the SHA-1 Thumbprint
-	SHA1(&Data->SignatureData[0], Size, Sha1);
-
-	// Reorder, to have the GUID read in the same order as the byte data
-	OwnerGuid.Data1 = SwapBytes32(((UINT32*)Sha1)[0]);
-	OwnerGuid.Data2 = SwapBytes16(((UINT16*)Sha1)[2]);
-	OwnerGuid.Data3 = SwapBytes16(((UINT16*)Sha1)[3]);
-	CopyMem(&OwnerGuid.Data4, &Sha1[8], 8);
-	CopyGuid(&Data->SignatureOwner, &OwnerGuid);
+	// Use either the Microsoft VendorGUID or our own, to identify who provisioned the variable
+	CopyGuid(&Data->SignatureOwner, UseMicrosoftGUID ? &gEfiMicrosoftGuid : &gEfiMosbyGuid);
 
 	Variable->Size = Esl->SignatureListSize;
 	Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
@@ -470,7 +462,8 @@ EFI_STATUS PopulateAuthVar(
 
 	// Check for a DER encoded X509 certificate
 	Ptr = Entry->Buffer.Data;	// d2i_###() modifies the pointer
-	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Entry->Buffer.Size), &Entry->Variable);
+	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Entry->Buffer.Size), &Entry->Variable,
+		Entry->Flags & USE_MICROSOFT_GUID);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 
@@ -478,7 +471,8 @@ EFI_STATUS PopulateAuthVar(
 	bio = BIO_new_mem_buf(Entry->Buffer.Data, Entry->Buffer.Size);
 	if (bio == NULL)
 		ReportErrorAndExit(L"Failed to create X509 buffer\n");
-	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable);
+	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable,
+		Entry->Flags & USE_MICROSOFT_GUID);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 	BIO_free(bio);	// Can't reuse the bio
@@ -490,7 +484,7 @@ EFI_STATUS PopulateAuthVar(
 	p12 = d2i_PKCS12_bio(bio, NULL);
 	// Need to read both the key and cert, even if we don't use the key here
 	if (PKCS12_parse(p12, NULL, (EVP_PKEY**)&Cred.Key, (X509**)&Cred.Cert, NULL)) {
-		Status = CertToAuthVar(Cred.Cert, &Entry->Variable);
+		Status = CertToAuthVar(Cred.Cert, &Entry->Variable, Entry->Flags & USE_MICROSOFT_GUID);
 		PKCS12_free(p12);
 		FreeCredentials(&Cred);
 		if (Status == EFI_SUCCESS)

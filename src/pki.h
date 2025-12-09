@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
- * Copyright 2024 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +46,8 @@ VOID FreeCredentials(
 
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
-	OUT MOSBY_VARIABLE *Variable
+	OUT MOSBY_VARIABLE *Variable,
+	IN CONST BOOLEAN UseMicrosoftGUID
 );
 
 EFI_STATUS PopulateAuthVar(

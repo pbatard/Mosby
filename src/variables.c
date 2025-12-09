@@ -24,7 +24,7 @@
 #define MOSBY_LAST_INSTALL_TIME     L"LastInstallTime"
 
 /* GUID we use to store variables */
-STATIC EFI_GUID gMosbyVariableGuid =
+EFI_GUID gEfiMosbyGuid =
 	{ 0x26A35749, 0x477E, 0x41A4, { 0xA9, 0x0A, 0x19, 0xC3, 0xAF, 0xEA, 0x85, 0x40 } };
 
 /* Various messages we display to the user as they attempt to enter Setup Mode */
@@ -170,9 +170,9 @@ EFI_STATUS CheckSetupMode(VOID)
 	// Check the amount of times the user got into UEFI Setup to try to enable Setup
 	// Mode, so that we can provide more helpful messages.
 	Size = sizeof(SetupModeAttempts);
-	gRT->GetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gMosbyVariableGuid, NULL, &Size, &SetupModeAttempts);
+	gRT->GetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gEfiMosbyGuid, NULL, &Size, &SetupModeAttempts);
 	// Now that we have (possibly) read it, delete the variable
-	gRT->SetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gMosbyVariableGuid, 0, 0, NULL);
+	gRT->SetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gEfiMosbyGuid, 0, 0, NULL);
 
 	// Get the Secure Boot, Setup Mode and Audit Mode status
 	Size = sizeof(SecureBoot);
@@ -226,7 +226,7 @@ EFI_STATUS CheckSetupMode(VOID)
 				SetOsIndication(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) == EFI_SUCCESS) {
 				// Log one more attempt by the user to try to enable Setup mode
 				SetupModeAttempts++;
-				gRT->SetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gMosbyVariableGuid,
+				gRT->SetVariable(MOSBY_SETUP_MODE_ATTEMPTS, &gEfiMosbyGuid,
 					EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
 					sizeof(SetupModeAttempts), &SetupModeAttempts);
 			}
@@ -252,7 +252,7 @@ BOOLEAN ExitNotice(
 
 	gRT->GetTime(&Time, NULL);
 	// Store the last installation time, so we can alert the user if they re-run Mosby
-	gRT->SetVariable(MOSBY_LAST_INSTALL_TIME, &gMosbyVariableGuid,
+	gRT->SetVariable(MOSBY_LAST_INSTALL_TIME, &gEfiMosbyGuid,
 					EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
 					sizeof(Time), &Time);
 	Reboot = (ConsoleYesNo(KeysGenerated ? ExitMessage1 : ExitMessage2) == 0);

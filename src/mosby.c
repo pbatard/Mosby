@@ -39,7 +39,7 @@ STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
 
 /* Microsoft GUID - Not yet defined in EDK2 */
-STATIC EFI_GUID gEfiMicrosoftGuid =
+EFI_GUID gEfiMicrosoftGuid =
 	{ 0x77FA9ABD, 0x0359, 0x4D32, { 0xBD, 0x60, 0x28, 0xF4, 0xE7, 0x8F, 0x78, 0x4B } };
 
 /* Attributes for the "key" types we support */
@@ -501,7 +501,7 @@ process_binaries:
 		Status = GenerateCredentials(DbSubject, &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable);
+		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable, FALSE);
 		if (EFI_ERROR(Status)) {
 			FreeCredentials(&Cred);
 			goto exit;
@@ -534,7 +534,7 @@ process_binaries:
 		Status = GenerateCredentials(PkSubject, &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable);
+		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable, FALSE);
 		if (EFI_ERROR(Status)) {
 			FreeCredentials(&Cred);
 			goto exit;
