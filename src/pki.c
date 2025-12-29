@@ -425,7 +425,7 @@ EFI_STATUS PopulateAuthVar(
 		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Entry->Path);
 
 	// Set default attributes for authenticated variable
-	Entry->Attrs = Entry->Type == MOK ? UEFI_VAR_NV_BS : UEFI_VAR_NV_BS_RT_TIMEAUTH;
+	Entry->Attrs = Entry->Type == MOK ? UEFI_VAR_NV_BS : UEFI_VAR_NV_BS_RT_AT;
 
 	// Check for signed ESL (PKCS#7 only)
 	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;

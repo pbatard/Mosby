@@ -106,7 +106,7 @@ STATIC CONST CHAR16 *ExitMessage1[] = {
 	L"sure that Secure Boot is enabled.                                ", 
 	L"",
 	L"IMPORTANT: Please make sure that you keep a copy of the following",
-	L"generated  files: 'MosbyKey.pfx', 'MosbyKey.crt', 'MosbyKey.key'.",
+	L"generated  files: 'MosbyKey.pfx', 'MosbyKey.crt', 'MosbyKey.pem'.",
 	L"They  are  your  UNIQUE  SECURE BOOT SIGNING KEYS, and you should",
 	L"carefully preserve them, so that you can sign UEFI executables.  ",
 	L"",

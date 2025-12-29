@@ -210,7 +210,7 @@ for file in "${order[@]}"; do
   if [[ "$type" == "SBAT" || "$type" == "MOK" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"
   else
-    echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;"
+    echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT;"
   fi
   echo "	List->Entry[List->Size].Path = L\"${file}\";"
   echo "	List->Entry[List->Size].Url = \"${url}\";"

@@ -506,7 +506,7 @@ process_binaries:
 			FreeCredentials(&Cred);
 			goto exit;
 		}
-		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
@@ -540,7 +540,7 @@ process_binaries:
 			goto exit;
 		}
 		// PK must be signed
-		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
 		Status = SignToAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
 			List.Entry[i].Attrs, &List.Entry[i].Variable, &Cred);
 		FreeCredentials(&Cred);
@@ -601,7 +601,7 @@ process_binaries:
 		}
 		List.Entry[List.Size].Buffer.Data = MergedEsl;
 		List.Entry[List.Size].Type = KEK;
-		List.Entry[List.Size].Attrs = UEFI_VAR_NV_BS_RT_TIMEAUTH;
+		List.Entry[List.Size].Attrs = UEFI_VAR_NV_BS_RT_AT;
 		List.Entry[List.Size].Description = "Merged KEK List";
 		List.Entry[List.Size].Path = L"Merged KEK List";
 		Status = PopulateAuthVar(&List.Entry[List.Size]);
