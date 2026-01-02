@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby")
- * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -221,16 +221,16 @@ EFI_STATUS EFIAPI efi_main(
 )
 {
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE;
-	BOOLEAN Append = FALSE, Reboot = FALSE, LogToFile = TRUE;
+	BOOLEAN Reboot = FALSE, LogToFile = TRUE;
 	EFI_STATUS Status;
-	EFI_TIME Time;
+	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
 	UINTN i, Size;
 	UINT16* SystemSSPV = NULL;
-	UINT32 SystemSBatVer, InstallSBatVer;
+	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
-	MOSBY_CRED Cred;
-	CHAR8 DbSubject[80], PkSubject[80], *SBat, *SBatLine;
+	MOSBY_CRED Cred = { 0 };
+	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
 	MOSBY_LIST List;
 
@@ -506,7 +506,7 @@ process_binaries:
 			FreeCredentials(&Cred);
 			goto exit;
 		}
-		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &Cred);
 		if (EFI_ERROR(Status))
 			goto exit;
@@ -619,7 +619,6 @@ install:
 	/* Install the variables, making sure that we finish with the PK. */
 	Status = EFI_NOT_FOUND;
 	for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
-		Append = (UpdateMode && Type == DBX);
 		for (i = 0; i < List.Size; i++) {
 			if (List.Entry[i].Type != Type || List.Entry[i].Flags & NO_INSTALL)
 				continue;
@@ -631,13 +630,11 @@ install:
 				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
 				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
-			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid,
-					List.Entry[i].Attrs | (Append ? EFI_VARIABLE_APPEND_WRITE : 0),
+			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, List.Entry[i].Attrs,
 					(List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size : List.Entry[i].Variable.Size,
 					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
 			if (EFI_ERROR(Status))
 				ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
-			Append = TRUE;
 		}
 	}
 

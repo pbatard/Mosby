@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby")
- * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -76,8 +76,10 @@
 
 /* Variable attributes */
 #define UEFI_VAR_NV_BS              (EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS)
+#define UEFI_VAR_NV_BS_AP           (UEFI_VAR_NV_BS | EFI_VARIABLE_APPEND_WRITE)
 #define UEFI_VAR_NV_BS_RT           (UEFI_VAR_NV_BS | EFI_VARIABLE_RUNTIME_ACCESS)
 #define UEFI_VAR_NV_BS_RT_AT        (UEFI_VAR_NV_BS_RT | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS)
+#define UEFI_VAR_NV_BS_RT_AT_AP     (UEFI_VAR_NV_BS_RT_AT | EFI_VARIABLE_APPEND_WRITE)
 
 /* Flags */
 #define USE_BUFFER                  0x01

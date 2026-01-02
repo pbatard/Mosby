@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") PKI/OpenSSL functions
- * Copyright © 2024-2025 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -425,7 +425,8 @@ EFI_STATUS PopulateAuthVar(
 		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Entry->Path);
 
 	// Set default attributes for authenticated variable
-	Entry->Attrs = Entry->Type == MOK ? UEFI_VAR_NV_BS : UEFI_VAR_NV_BS_RT_AT;
+	if (Entry->Attrs == 0)
+		Entry->Attrs = (Entry->Type == MOK) ? UEFI_VAR_NV_BS_AP : UEFI_VAR_NV_BS_RT_AT_AP;
 
 	// Check for signed ESL (PKCS#7 only)
 	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;
@@ -523,7 +524,7 @@ exit:
 
 EFI_STATUS SignToAuthVar(
 	IN CONST CHAR16 *VariableName,
-	IN CONST EFI_GUID *VendorGuid,
+	IN CONST EFI_GUID *VariableGuid,
 	IN CONST UINT32 Attributes,
 	IN OUT MOSBY_VARIABLE *Variable,
 	IN CONST MOSBY_CRED *Credentials
@@ -536,7 +537,7 @@ EFI_STATUS SignToAuthVar(
 		UINTN Size;
 	} SignableElement[5] = {
 		{ (UINT8*)VariableName, StrLen(VariableName) * sizeof(CHAR16) },
-		{ (UINT8*)VendorGuid, sizeof(EFI_GUID) },
+		{ (UINT8*)VariableGuid, sizeof(EFI_GUID) },
 		{ (UINT8*)&Attributes, sizeof(Attributes) },
 		{ (UINT8*)&Variable->Data->TimeStamp, sizeof(EFI_TIME) },
 		{ &(((UINT8*)Variable->Data)[OFFSET_OF_AUTHINFO2_CERT_DATA]), Variable->Size - OFFSET_OF_AUTHINFO2_CERT_DATA }
