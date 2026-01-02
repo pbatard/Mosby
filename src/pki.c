@@ -50,6 +50,8 @@
 	ERR_print_errors_cb(OpenSSLErrorCallback, _ErrMsg); goto exit;  \
 	} while(0)
 
+extern MOSBY_KEY_INFO KeyInfo[MAX_TYPES];
+
 STATIC EFI_TIME mTime = { 0 };
 
 /* For OpenSSL error reporting */
@@ -406,7 +408,8 @@ exit:
 }
 
 EFI_STATUS PopulateAuthVar(
-	IN OUT MOSBY_ENTRY *Entry
+	IN OUT MOSBY_ENTRY *Entry,
+	IN MOSBY_CRED *Credentials
 )
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
@@ -414,7 +417,7 @@ EFI_STATUS PopulateAuthVar(
 	CONST UINT8 *Ptr;
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	MOSBY_CRED Cred = { 0 };
-	EFI_VARIABLE_AUTHENTICATION_2 *SignedEsl = NULL;
+	EFI_VARIABLE_AUTHENTICATION_2 *AuthVar = NULL;
 	PKCS12 *p12 = NULL;
 	BIO *bio = NULL;
 
@@ -429,15 +432,15 @@ EFI_STATUS PopulateAuthVar(
 		Entry->Attrs = (Entry->Type == MOK) ? UEFI_VAR_NV_BS_AP : UEFI_VAR_NV_BS_RT_AT_AP;
 
 	// Check for signed ESL (PKCS#7 only)
-	SignedEsl = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;
+	AuthVar = (EFI_VARIABLE_AUTHENTICATION_2*)Entry->Buffer.Data;
 	if (Entry->Buffer.Size > sizeof(EFI_VARIABLE_AUTHENTICATION_2) &&
-		SignedEsl->AuthInfo.Hdr.dwLength < Entry->Buffer.Size &&
-		SignedEsl->AuthInfo.Hdr.wRevision == 0x0200 &&
-		SignedEsl->AuthInfo.Hdr.wCertificateType == WIN_CERT_TYPE_EFI_GUID &&
-		CompareGuid(&SignedEsl->AuthInfo.CertType, &gEfiCertPkcs7Guid)) {
-		if (SignedEsl->AuthInfo.CertData[0] != 0x30 || SignedEsl->AuthInfo.CertData[1] != 0x82)
+		AuthVar->AuthInfo.Hdr.dwLength < Entry->Buffer.Size &&
+		AuthVar->AuthInfo.Hdr.wRevision == 0x0200 &&
+		AuthVar->AuthInfo.Hdr.wCertificateType == WIN_CERT_TYPE_EFI_GUID &&
+		CompareGuid(&AuthVar->AuthInfo.CertType, &gEfiCertPkcs7Guid)) {
+		if (AuthVar->AuthInfo.CertData[0] != 0x30 || AuthVar->AuthInfo.CertData[1] != 0x82)
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
-		HeaderSize = (SignedEsl->AuthInfo.CertData[2] << 8) | SignedEsl->AuthInfo.CertData[3];
+		HeaderSize = (AuthVar->AuthInfo.CertData[2] << 8) | AuthVar->AuthInfo.CertData[3];
 		HeaderSize += OFFSET_OF(EFI_VARIABLE_AUTHENTICATION_2, AuthInfo);
 		HeaderSize += OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData);
 		HeaderSize += 4;	// For the 4 extra bytes above
@@ -454,11 +457,11 @@ EFI_STATUS PopulateAuthVar(
 		if ((UINTN)Esl != (UINTN)&Entry->Buffer.Data[Entry->Buffer.Size])
 			ReportErrorAndExit(L"Invalid signed ESL '%s'\n", Entry->Path);
 		Entry->Variable.Size = Entry->Buffer.Size;
-		Entry->Variable.Data = SignedEsl;
+		Entry->Variable.Data = AuthVar;
 		Entry->Flags |= ALLOW_UPDATE;
 		Entry->Buffer.Data = NULL;	// Don't double free our data
-		Status = EFI_SUCCESS;
-		goto exit;
+		// TODO: Do we want to validate the signature too?
+		return EFI_SUCCESS;
 	}
 
 	// Check for a DER encoded X509 certificate
@@ -518,11 +521,14 @@ exit:
 		Entry->Attrs = 0;
 		Entry->Variable.Size = 0;
 		SafeFree(Entry->Variable.Data);
+		return Status;
 	}
-	return Status;
+	// Sign the authvar
+	return SignAuthVar(KeyInfo[Entry->Type].VariableName, KeyInfo[Entry->Type].VariableGuid,
+			Entry->Attrs, &Entry->Variable, Credentials);
 }
 
-EFI_STATUS SignToAuthVar(
+EFI_STATUS SignAuthVar(
 	IN CONST CHAR16 *VariableName,
 	IN CONST EFI_GUID *VariableGuid,
 	IN CONST UINT32 Attributes,

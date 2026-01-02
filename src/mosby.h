@@ -114,6 +114,14 @@ enum {
 	MAX_TYPES
 };
 
+/* Attributes for the "key" types we support */
+typedef struct {
+	CHAR8 *DisplayName;
+	CHAR16 *OptionName;
+	CHAR16 *VariableName;
+	EFI_GUID *VariableGuid;
+} MOSBY_KEY_INFO;
+
 /* Mosby buffer struct */
 typedef struct {
 	UINTN Size;

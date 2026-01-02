@@ -42,13 +42,8 @@ STATIC EFI_GUID gEfiShimLockGuid =
 EFI_GUID gEfiMicrosoftGuid =
 	{ 0x77FA9ABD, 0x0359, 0x4D32, { 0xBD, 0x60, 0x28, 0xF4, 0xE7, 0x8F, 0x78, 0x4B } };
 
-/* Attributes for the "key" types we support */
-STATIC struct {
-	CHAR8 *DisplayName;
-	CHAR16 *OptionName;
-	CHAR16 *VariableName;
-	EFI_GUID *VariableGuid;
-} KeyInfo[MAX_TYPES] = {
+/* Populate the key type attributes */
+MOSBY_KEY_INFO KeyInfo[MAX_TYPES] = {
 	[PK] = {
 		.DisplayName  = "PK:  ",
 		.OptionName   = L"-pk",
@@ -229,7 +224,7 @@ EFI_STATUS EFIAPI efi_main(
 	UINT16* SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
-	MOSBY_CRED Cred = { 0 };
+	MOSBY_CRED PkCred = { 0 }, DbCred = { 0 };
 	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
 	MOSBY_LIST List;
@@ -414,6 +409,17 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 process_binaries:
+
+	/* Generate the credentials, which we use both to sign the authvars as well as PK */
+	Status = gRT->GetTime(&Time, NULL);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Failed to get time - Aborting\n");
+	AsciiSPrint(PkSubject, sizeof(PkSubject), "Mosby Generated PK [%04d.%02d.%02d]",
+		Time.Year, Time.Month, Time.Day);
+	Status = GenerateCredentials(PkSubject, &PkCred);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Failed to generate signing credentials - Aborting\n");
+
 	/* Process binaries that have been provided to the application */
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Variable.Data != NULL)
@@ -435,7 +441,7 @@ process_binaries:
 				List.Entry[i].Attrs = UEFI_VAR_NV_BS;
 				break;
 			default:
-				Status = PopulateAuthVar(&List.Entry[i]);
+				Status = PopulateAuthVar(&List.Entry[i], &PkCred);
 				if (EFI_ERROR(Status))
 					ReportErrorAndExit(L"Failed to create variable - Aborting\n");
 				break;
@@ -492,30 +498,29 @@ process_binaries:
 		i = List.Size;
 		RecallPrint(L"Generating Secure Boot signing credentials...\n");
 		List.Entry[i].Type = DB;
-		Status = gRT->GetTime(&Time, NULL);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to get time - Aborting\n");
 		AsciiSPrint(DbSubject, sizeof(DbSubject), "%a [%04d.%02d.%02d]",
 			MOSBY_CRED_NAME, Time.Year, Time.Month, Time.Day);
 		List.Entry[i].Description = DbSubject;
-		Status = GenerateCredentials(DbSubject, &Cred);
+		Status = GenerateCredentials(DbSubject, &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable, FALSE);
-		if (EFI_ERROR(Status)) {
-			FreeCredentials(&Cred);
+		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i].Variable, FALSE);
+		if (EFI_ERROR(Status))
 			goto exit;
-		}
-		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
-		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &Cred);
+		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
 		RecallPrint(L"Saved Secure Boot signing credentials as '%a'\n", MOSBY_CRED_NAME);
-		FreeCredentials(&Cred);
+
+		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
+		Status = SignAuthVar(KeyInfo[DB].VariableName, KeyInfo[DB].VariableGuid,
+			List.Entry[i].Attrs, &List.Entry[i].Variable, &PkCred);
+		if (EFI_ERROR(Status))
+			ReportErrorAndExit(L"Failed to sign DB\n");
 		List.Size++;
 	}
 
-	/* Generate a keyless PK cert if none was specified */
+	/* Set up the PK if none was specified */
 	LastEntry = RemoveDuplicates(PK, &List);
 	if (LastEntry < 0) {
 		if (List.Size >= MOSBY_MAX_LIST_SIZE)
@@ -523,27 +528,14 @@ process_binaries:
 		RecallPrint(L"Generating PK certificate...\n");
 		i = List.Size;
 		List.Entry[i].Type = PK;
-		if (!GenDBCred) {
-			Status = gRT->GetTime(&Time, NULL);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to get time - Aborting\n");
-		}
-		AsciiSPrint(PkSubject, sizeof(PkSubject), "Mosby Generated PK [%04d.%02d.%02d]",
-			Time.Year, Time.Month, Time.Day);
 		List.Entry[i].Description = PkSubject;
-		Status = GenerateCredentials(PkSubject, &Cred);
+		Status = CertToAuthVar(PkCred.Cert, &List.Entry[i].Variable, FALSE);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(Cred.Cert, &List.Entry[i].Variable, FALSE);
-		if (EFI_ERROR(Status)) {
-			FreeCredentials(&Cred);
-			goto exit;
-		}
 		// PK must be signed
 		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
-		Status = SignToAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
-			List.Entry[i].Attrs, &List.Entry[i].Variable, &Cred);
-		FreeCredentials(&Cred);
+		Status = SignAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
+			List.Entry[i].Attrs, &List.Entry[i].Variable, &PkCred);
 		if (EFI_ERROR(Status)) {
 			SafeFree(List.Entry[i].Variable.Data);
 			goto exit;
@@ -554,9 +546,10 @@ process_binaries:
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
 	/*
 	 * There appears to be a whole sway of AMI UEFI firmwares with a rather unfortunate bug,
-	 * that prevents appending to an existing KEK store. Which means that, on the affected
+	 * that prevents appending to an existing KEK store (or even creating the initial KEK
+	 * variable if it is done with the append flag set). Which means that, on the affected
 	 * systems, if we try to write more than one KEK, using multiple SetVariable() calls,
-	 * only the first call succeeds and all subsequent ones fail with EFI_INVALID_PARAMETER.
+	 * only the first can succeed and all subsequent ones fail with EFI_INVALID_PARAMETER.
 	 * To work around this and since any unsigned KEK we processed above should already have
 	 * been converted to an ESL (embedded in an EFI_VARIABLE_AUTHENTICATION_2 struct), we
 	 * concatenate all these ESLs into a single array, which can then be written through a
@@ -581,8 +574,9 @@ process_binaries:
 			RecallPrint(L"Adding '%s' to Merged KEK List\n", List.Entry[i].Path);
 		/* Get the ESL data from EFI_VARIABLE_AUTHENTICATION_2 (at .AuthInfo.CertData) */
 		Esl[EslIndex++] = (EFI_SIGNATURE_LIST*)&((UINT8*)List.Entry[i].Variable.Data)[
+			((List.Entry[i].Variable.Data->AuthInfo.CertData[2] << 8) | List.Entry[i].Variable.Data->AuthInfo.CertData[3]) +
 			OFFSET_OF(EFI_VARIABLE_AUTHENTICATION_2, AuthInfo) +
-			OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData)];
+			OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData) + 4];
 		/* Remove the individual KEK from our installation list, since it will be merged */
 		List.Entry[i].Flags |= NO_INSTALL;
 	}
@@ -604,7 +598,7 @@ process_binaries:
 		List.Entry[List.Size].Attrs = UEFI_VAR_NV_BS_RT_AT;
 		List.Entry[List.Size].Description = "Merged KEK List";
 		List.Entry[List.Size].Path = L"Merged KEK List";
-		Status = PopulateAuthVar(&List.Entry[List.Size]);
+		Status = PopulateAuthVar(&List.Entry[List.Size], &PkCred);
 		if (EFI_ERROR(Status))
 			ReportErrorAndExit(L"Failed to create merged KEK variable - Aborting\n");
 		List.Size++;
@@ -644,6 +638,8 @@ install:
 exit:
 	for (i = 0; i < List.Size; i++)
 		FreePool(List.Entry[i].Variable.Data);
+	FreeCredentials(&DbCred);
+	FreeCredentials(&PkCred);
 	FreePool(Argv);
 	RecallPrintFree();
 	CloseLogger();
