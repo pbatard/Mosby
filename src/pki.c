@@ -585,6 +585,20 @@ EFI_STATUS SignAuthVar(
 	if (bio == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 
+	// Soooo, the UEFI 2.3.1 specs, released with the introduction of Secure Boot in 2011 CLEARLY stipulate
+	// (https://uefi.org/sites/default/files/resources/UEFI_Spec_2_3_1.pdf, section 7.2.1) that ContentInfo
+	// SHOULD be present in SignedData.
+	// Yet, the EDK2's own implementation, which ended up being used as the base for the HP ProDesk 600 G1
+	// as well as other UEFI firmwares, had the VerifyTimeBasedPayload() code report EFI_SECURITY_VIOLATION
+	// if ContentInfo was present.
+	// This was eventually fixed in https://github.com/tianocore/edk2/commit/37d3eb026a766b2405daae47e02094c2ec248646
+	// Because of this screwup, recent UEFI specs have added an exception for EFI_VARIABLE_AUTHENTICATION_2
+	// "Which shall be supported both with and without a DER-encoded ContentInfo structure". See for instance:
+	// https://uefi.org/specs/UEFI/2.11/08_Services_Runtime_Services.html#using-the-efi-variable-authentication-2-descriptor
+	// The end result of this, since we want to be compatible with HP hardware (that requires a workaround
+	// where we always feed SetVariable() with signed data), is that we must ensure that ContentInfo is
+	// removed from the signature data, which means using i2d_PKCS7_SIGNED(p7->d.sign, ...) instead of the
+	// expected i2d_PKCS7(p7, ...).
 	p7 = PKCS7_sign(NULL, NULL, NULL, bio, flags | PKCS7_PARTIAL);
 	if (p7 == NULL)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
@@ -592,7 +606,7 @@ EFI_STATUS SignAuthVar(
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	if (!PKCS7_final(p7, bio, flags))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
-	SignatureSize = i2d_PKCS7(p7, NULL);
+	SignatureSize = i2d_PKCS7_SIGNED(p7->d.sign, NULL);
 
 	// Create the signed variable
 	SignedVariable = AllocateZeroPool(Variable->Size + SignatureSize);
@@ -601,7 +615,7 @@ EFI_STATUS SignAuthVar(
 	CopyMem(SignedVariable, Variable->Data, OFFSET_OF_AUTHINFO2_CERT_DATA);
 	SignedVariable->AuthInfo.Hdr.dwLength = OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData) + SignatureSize;
 	Ptr = SignedVariable->AuthInfo.CertData;
-	SignatureSize = i2d_PKCS7(p7, &Ptr);
+	SignatureSize = i2d_PKCS7_SIGNED(p7->d.sign, &Ptr);
 	Payload = (UINT8*)SignedVariable;
 	Payload = &Payload[OFFSET_OF_AUTHINFO2_CERT_DATA + SignatureSize];
 	CopyMem(Payload, SignableElement[PAYLOAD].Ptr, SignableElement[PAYLOAD].Size);
