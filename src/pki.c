@@ -121,8 +121,10 @@ STATIC EFI_STATUS AddExtension(
 {
 	EFI_STATUS Status = EFI_SUCCESS;
 	X509_EXTENSION *ex = NULL;
+	X509V3_CTX ctx;
 
-	ex = X509V3_EXT_nconf_nid(NULL, NULL, ExtNid, (char *)ExtStr);
+	X509V3_set_ctx(&ctx, Cert, Cert, NULL, NULL, 0);
+	ex = X509V3_EXT_nconf_nid(NULL, &ctx, ExtNid, (char *)ExtStr);
 	if (ex == NULL)
 		ReportOpenSSLErrorAndExit(EFI_UNSUPPORTED);
 
@@ -173,9 +175,12 @@ EFI_STATUS GenerateCredentials(
 	// Set version
 	X509_set_version(Cert, 2);
 
-	// Set usage for code signing as a Certification Authority
-	AddExtension(Cert, NID_basic_constraints, "critical,CA:TRUE");
-	AddExtension(Cert, NID_key_usage, "critical,digitalSignature,keyCertSign");
+	// Set usage to what OEMs typically use for PK. Should also work fine for DB.
+	// Avoid restricting key usage and avoid critical, as some UEFI firmwares do
+	// take objection to a signed cert with an improperly declared key usage.
+	AddExtension(Cert, NID_basic_constraints, "CA:TRUE");
+	AddExtension(Cert, NID_subject_key_identifier, "hash");
+	AddExtension(Cert, NID_authority_key_identifier, "keyid:always,issuer");
 
 	// Set subject key identifier
 	ASN1_OCTET_STRING *Skid = ASN1_OCTET_STRING_new();
