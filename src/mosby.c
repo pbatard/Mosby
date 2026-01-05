@@ -418,7 +418,7 @@ process_binaries:
 		Time.Year, Time.Month, Time.Day);
 	Status = GenerateCredentials(PkSubject, &PkCred);
 	if (EFI_ERROR(Status))
-		ReportErrorAndExit(L"Failed to generate signing credentials - Aborting\n");
+		ReportErrorAndExit(L"Failed to generate PK signing credentials - Aborting\n");
 
 	/* Process binaries that have been provided to the application */
 	for (i = 0; i < List.Size; i++) {
@@ -496,7 +496,7 @@ process_binaries:
 		if (List.Size >= MOSBY_MAX_LIST_SIZE)
 			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		i = List.Size;
-		RecallPrint(L"Generating Secure Boot signing credentials...\n");
+		RecallPrint(L"Generating Secure Boot DB signing credentials...\n");
 		List.Entry[i].Type = DB;
 		AsciiSPrint(DbSubject, sizeof(DbSubject), "%a [%04d.%02d.%02d]",
 			MOSBY_CRED_NAME, Time.Year, Time.Month, Time.Day);
@@ -510,7 +510,7 @@ process_binaries:
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		RecallPrint(L"Saved Secure Boot signing credentials as '%a'\n", MOSBY_CRED_NAME);
+		RecallPrint(L"Saved Secure Boot DB signing credentials as '%a'\n", MOSBY_CRED_NAME);
 
 		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 		Status = SignAuthVar(KeyInfo[DB].VariableName, KeyInfo[DB].VariableGuid,

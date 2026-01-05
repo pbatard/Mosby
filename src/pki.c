@@ -142,13 +142,10 @@ EFI_STATUS GenerateCredentials(
 )
 {
 	EFI_STATUS Status;
-	EFI_TIME EfiTime = { 0 };
-	INTN NumLeapDays = 0, i;
+	CHAR8 TimeStr[32];
 	EVP_PKEY *Key = NULL;
 	X509 *Cert = NULL;
-	UINT16 Year;
-	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 }, Month, Day;
-	time_t Epoch;
+	UINT8 Hash[SHA_DIGEST_LENGTH] = { 0 };
 	unsigned int Len;
 
 	if (CertName == NULL || Credentials == NULL)
@@ -166,14 +163,13 @@ EFI_STATUS GenerateCredentials(
 
 	// Set the certificate serial number
 	ASN1_INTEGER* sn = ASN1_INTEGER_new();
-	Epoch = time(NULL);
-	ASN1_INTEGER_set(sn, Epoch);
+	ASN1_INTEGER_set(sn, time(NULL));
 	if (!X509_set_serialNumber(Cert, sn))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	ASN1_INTEGER_free(sn);
 
 	// Set version
-	X509_set_version(Cert, 2);
+	X509_set_version(Cert, X509_VERSION_3);
 
 	// Set usage to what OEMs typically use for PK. Should also work fine for DB.
 	// Avoid restricting key usage and avoid critical, as some UEFI firmwares do
@@ -193,39 +189,12 @@ EFI_STATUS GenerateCredentials(
 
 	// Set certificate validity to MOSBY_VALID_YEARS
 	ASN1_TIME* asn1time = ASN1_TIME_new();
-	// Because of timezones and whatnot, we need to set the start and end times of
-	// the certificate to exactly midnight. May still be off by 1 hour due to DST.
-	EpochToEfiTime(Epoch, &EfiTime);
-	// Easier to store YYYY.MM.DD and zero the struct
-	Year = EfiTime.Year;
-	Month = EfiTime.Month;
-	Day = EfiTime.Day;
-	ZeroMem(&EfiTime, sizeof(EFI_TIME));
-	EfiTime.Year = Year;
-	EfiTime.Month = Month;
-	EfiTime.Day = Day;
-	Epoch = EfiTimeToEpoch(&EfiTime);
-	ASN1_TIME_set(asn1time, Epoch);
-	X509_set1_notBefore(Cert, asn1time);
-
-	// Because we want the certificate expiration to end on the same month & day as
-	// the start date, we need to compute how many leap days there are in-between
-	for (i = 0; i < MOSBY_VALID_YEARS; i++) {
-		EfiTime.Year = (UINT16)(Year + i);
-		if (IsLeapYear(&EfiTime)) {
-			if (i != 0 && i != MOSBY_VALID_YEARS - 1)
-				// For years that are neither start or end year
-				NumLeapDays++;
-			else if (i == 0 && Month < 3)
-				// Start year is leap year and start date is before March 1st
-				NumLeapDays++;
-			else if (i == MOSBY_VALID_YEARS - 1 && Month > 2)
-				// End year is leap year and end date is after February 29th
-				NumLeapDays++;
-		}
-	}
-	ASN1_TIME_set(asn1time, Epoch + (60 * 60 * 24 * (365 * MOSBY_VALID_YEARS + NumLeapDays) - 1));
-	X509_set1_notAfter(Cert, asn1time);
+	AsciiSPrint(TimeStr, ARRAY_SIZE(TimeStr), "%04d%02d%02d000000Z", mTime.Year, mTime.Month, mTime.Day);
+	if (!ASN1_TIME_set_string_X509(asn1time, TimeStr) || !X509_set1_notBefore(Cert, asn1time))
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
+	AsciiSPrint(TimeStr, ARRAY_SIZE(TimeStr), "%04d%02d%02d235959Z", mTime.Year + MOSBY_VALID_YEARS, mTime.Month, mTime.Day);
+	if (!ASN1_TIME_set_string_X509(asn1time, TimeStr) || !X509_set1_notAfter(Cert, asn1time))
+		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	ASN1_TIME_free(asn1time);
 
 	// Add the subject name
