@@ -175,7 +175,7 @@ EFI_STATUS GenerateCredentials(
 
 	// Set usage for code signing as a Certification Authority
 	AddExtension(Cert, NID_basic_constraints, "critical,CA:TRUE");
-	AddExtension(Cert, NID_key_usage, "critical,digitalSignature,keyEncipherment");
+	AddExtension(Cert, NID_key_usage, "critical,digitalSignature,keyCertSign");
 
 	// Set subject key identifier
 	ASN1_OCTET_STRING *Skid = ASN1_OCTET_STRING_new();
