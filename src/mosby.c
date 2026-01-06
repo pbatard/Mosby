@@ -315,7 +315,8 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
-	/* Initialize the file logger */
+	/* Initialize the console and the file logger */
+	ConsoleInit();
 	if (LogToFile)
 		OpenLogger(gBaseImageHandle, L"Mosby.log");
 	RecallPrint(L"Mosby %a %s\n", VERSION_STRING, ARCH_EXT);

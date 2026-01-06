@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
- * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -78,7 +78,7 @@ VOID ConsoleError(
 	IN CONST EFI_STATUS Status
 );
 
-VOID ConsoleReset(VOID);
+VOID ConsoleInit(VOID);
 
 UINTN EFIAPI Logger(
 	IN  CONST CHAR16 *FormatString,

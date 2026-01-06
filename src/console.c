@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 James Bottomley <James.Bottomley@HansenPartnership.com>
- * Copyright 2024-2025 Pete Batard <pete@akeo.ie>
+ * Copyright 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -96,7 +96,7 @@ EFI_STATUS ConsolePrintBoxAt(
 {
 	INTN i;
 	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
-	UINTN Rows, Cols;
+	UINTN Cols, Rows;
 	CHAR16 *Line;
 
 	if (Lines == 0)
@@ -371,13 +371,17 @@ VOID ConsoleError(
 	ConsoleAlertBox(ErrArray);
 }
 
-VOID ConsoleReset(VOID)
+VOID ConsoleInit(VOID)
 {
+	UINTN Cols, Rows;
 	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 
-	Console->Reset(Console, TRUE);
-	// Set mode 0 - required to be 80x25
-	Console->SetMode(Console, 0);
+	// Some broken firmware implementations (<cough>HP ProDesk 600 G1<cough>) have a default
+	// console where mode 0 overshoots the screen (on a 4k monitor) until SetMode is called.
+	// So we call SetMode with the current mode to fix that. Also, you do *NOT* want to call
+	// Console->Reset() as it may switch from a default high res mode to low res mode 0...
+	Console->QueryMode(Console, Console->Mode->Mode, &Cols, &Rows);
+	Console->SetMode(Console, Console->Mode->Mode);
 	Console->ClearScreen(Console);
 }
 
@@ -515,8 +519,9 @@ UINTN EFIAPI RecallPrint(
 VOID RecallPrintRestore(VOID)
 {
 	UINTN i;
+	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Console = gST->ConOut;
 
-	ConsoleReset();
+	Console->ClearScreen(Console);
 	for (i = 0; i < CurrentLine; i++)
 		Print(L"%s", PrintLine[i]);
 }
