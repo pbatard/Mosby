@@ -342,13 +342,15 @@ EFI_STATUS EFIAPI efi_main(
 			(CONST CHAR16 *[]){
 				L"NOTICE",
 				L"",
-				L"This application will update your Secure Boot entries using the latest    ",
-				L"database and OS provider data, as well as set a UNIQUE system-specific    ",
-				L"root certificate, that is not under the control of third-parties.         ",
+				L"This application will update your Secure Boot entries  using  the",
+				L"current UEFI databases and OS-provider data, as  well  as  set  a",
+				L"UNIQUE system-specific PK certificate,  that  is  not  under  the",
+				L"control of any third-party (such as your platform OEM).          ",
 				L"",
-				L"It will also allow you to create/install your own Secure Boot signing key.",
+				L"It will also allow you to create or install your own  Secure Boot",
+				L"signing key.                                                     ",
 				L"",
-				L"If this is not what you want, please select 'Cancel' now.",
+				L"If this is not what you want, please select 'Cancel' now.        ",
 				NULL
 			});
 		RecallPrintRestore();
@@ -370,13 +372,13 @@ EFI_STATUS EFIAPI efi_main(
 			(CONST CHAR16 *[]){
 				L"DB credentials installation",
 				L"",
-				L"Do you want to SELECT an existing Secure Boot signing certificate  ",
-				L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL  ",
-				L"an additional certificate for your own usage)?                     ",
+				L"Do you want to SELECT an existing Secure Boot signing certificate",
+				L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
+				L"an additional certificate for your own usage)?                   ",
 				L"",
-				L"If you don't know what to use, we recommend to GENERATE new signing",
-				L"credentials, so that you will be able to sign your own Secure Boot ",
-				L"binaries for this system.                                          ",
+				L"If you don't know what  to  do,  we  recommend  to  GENERATE  new",
+				L"signing credentials, so that you can sign  your  own  Secure Boot",
+				L"binaries for this system.                                        ",
 				NULL
 			},
 			(CONST CHAR16 *[]){
