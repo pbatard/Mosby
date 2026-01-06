@@ -216,7 +216,7 @@ EFI_STATUS EFIAPI efi_main(
 )
 {
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE;
-	BOOLEAN Reboot = FALSE, LogToFile = TRUE;
+	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
@@ -412,6 +412,7 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 process_binaries:
+	DisplayErrorNotice = TRUE;
 
 	/* Generate the credentials, which we use both to sign the authvars as well as PK */
 	Status = gRT->GetTime(&Time, NULL);
@@ -639,6 +640,28 @@ install:
 		Reboot = ExitNotice(GenDBCred);
 
 exit:
+	if (EFI_ERROR(Status) && DisplayErrorNotice && !gOptionSilent) {
+		// The RISC-V gcc compiler adds implicit memcpy() calls here if you declare the text
+		// blurb inline, *LIKE WE DO EVERYWHERE ELSE ABOVE WITHOUT ISSUE*, which of course
+		// breaks UEFI app compilation. So we have to declare a static variable. WTF?!?
+		STATIC CONST CHAR16 *WTF_RISC_COMPILER[] = {
+			L"ERROR",
+			L"",
+			L"Mosby was NOT able to install your Secure Boot variables.        ",
+			L"",
+			L"You will NOT be able to re-enable Secure Boot until you fix this.",
+			L"",
+			L"In case you used custom variables or parameters, you can  try  to",
+			L"run Mosby again, with no options. Or, if that still doesn't work,",
+			L"you will need to restore the Factory/Manufacturer keys  by  going",
+			L"into your UEFI/BIOS firmware settings, and selecting the relevant",
+			L"option, in the 'Secure Boot' menu.                               ",
+			L"",
+			NULL
+		};
+		ConsoleAlertBox(WTF_RISC_COMPILER);
+		RecallPrintRestore();
+	}
 	for (i = 0; i < List.Size; i++)
 		FreePool(List.Entry[i].Variable.Data);
 	FreeCredentials(&DbCred);

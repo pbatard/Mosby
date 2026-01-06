@@ -30,13 +30,17 @@
 
 #include <Uefi/UefiBaseType.h>
 
-#define MAX_PRINT_LINES   50
-#define MAX_LINE_SIZE     120
+#define MAX_PRINT_LINES             50
+#define MAX_LINE_SIZE               120
+#define DEFAULT_FOREGROUND_COLOR    EFI_LIGHTGRAY
+#define DEFAULT_BACKGROUND_COLOR    EFI_BACKGROUND_BLUE
 
 STATIC UINTN CurrentLine = 0;
 STATIC CHAR16* PrintLine[MAX_PRINT_LINES] = { 0 };
 STATIC CHAR16 LogPath[80];
 STATIC EFI_FILE_HANDLE LogHandle = NULL;
+STATIC UINTN ForeGroundColor = DEFAULT_FOREGROUND_COLOR;
+STATIC UINTN BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 
 STATIC __inline INTN CountLines(
 	IN CONST CHAR16 *StrArray[]
@@ -176,11 +180,11 @@ EFI_STATUS ConsolePrintBoxAt(
 			CopyMem(Line + Col + 1, Str, MIN(Len, SizeCols - 2) * 2);
 		}
 		if (LineNum >= 0 && LineNum == Highlight)
-			Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLACK);
+			Console->SetAttribute(Console, ForeGroundColor | EFI_BACKGROUND_BLACK);
 		Console->SetCursorPosition(Console, StartCol, i);
 		Console->OutputString(Console, Line);
 		if (LineNum >= 0 && LineNum == Highlight)
-			Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
+			Console->SetAttribute(Console, ForeGroundColor | BackGroundColor);
 	}
 
 	SetMem16(Line, SizeCols * 2, BOXDRAW_HORIZONTAL);
@@ -204,7 +208,7 @@ VOID ConsolePrintBox(
 	CopyMem(&SavedConsoleMode, Console->Mode, sizeof(SavedConsoleMode));
 	Console->ClearScreen(Console);
 	Console->EnableCursor(Console, FALSE);
-	Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
+	Console->SetAttribute(Console, ForeGroundColor | BackGroundColor);
 
 	ConsolePrintBoxAt(StrArray, Highlight, 0, 0, -1, -1, 0, CountLines(StrArray));
 
@@ -219,7 +223,7 @@ VOID ConsolePrintBox(
 
 INTN ConsoleSelect(
 	IN CONST CHAR16 *Title[],
-	IN CONST CHAR16* Selectors[],
+	IN CONST CHAR16 *Selectors[],
 	IN INTN Start
 )
 {
@@ -272,7 +276,7 @@ INTN ConsoleSelect(
 	CopyMem(&SavedConsoleMode, Console->Mode, sizeof(SavedConsoleMode));
 	Console->ClearScreen(Console);
 	Console->EnableCursor(Console, FALSE);
-	Console->SetAttribute(Console, EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE);
+	Console->SetAttribute(Console, ForeGroundColor | BackGroundColor);
 
 	ConsolePrintBoxAt(Title, -1, 0, 0, -1, -1, 1, CountLines(Title));
 
@@ -329,10 +333,12 @@ INTN ConsoleOkCancel(
 }
 
 VOID ConsoleAlertBox(
-	IN CONST CHAR16 **Title
+	IN CONST CHAR16 *StrArray[]
 )
 {
-	ConsoleSelect(Title, (CONST CHAR16 *[]){ L"OK", 0 }, 0);
+	BackGroundColor = EFI_BACKGROUND_RED;
+	ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"OK", 0 }, 0);
+	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 }
 
 VOID ConsoleErrorBox(
@@ -348,7 +354,9 @@ VOID ConsoleErrorBox(
 
 	ErrArray[2] = Err;
 
+	BackGroundColor = EFI_BACKGROUND_RED;
 	ConsoleAlertBox(ErrArray);
+	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 }
 
 VOID ConsoleError(
@@ -368,7 +376,9 @@ VOID ConsoleError(
 
 	ErrArray[2] = Str;
 
+	BackGroundColor = EFI_BACKGROUND_RED;
 	ConsoleAlertBox(ErrArray);
+	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 }
 
 VOID ConsoleInit(VOID)

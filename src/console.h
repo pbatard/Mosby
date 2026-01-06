@@ -66,7 +66,7 @@ INTN ConsoleOkCancel(
 );
 
 VOID ConsoleAlertBox(
-	IN CONST CHAR16 **Title
+	IN CONST CHAR16 *StrArray[]
 );
 
 VOID ConsoleErrorBox(
