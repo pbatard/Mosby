@@ -114,6 +114,7 @@ variable to the data you want to install for it.
 
 * `-h`: Display the application parameters and exit.
 * `-v`: Display the application version and exit.
+* `-d`: Create a `NoPK.auth` PK deletion package (that can be used with KeyTool).
 * `-i`: Display information about the embedded data installable by the application, as well
         as the current SBAT data from the system (if SBAT is set).
 * `-n`: No file logging (disables appending the screen ouput to `Mosby.log`).

@@ -381,6 +381,40 @@ exit:
 	return Status;
 }
 
+EFI_STATUS CreateEmptyAuthVar(
+	OUT MOSBY_VARIABLE *Variable
+)
+{
+	EFI_STATUS Status = EFI_OUT_OF_RESOURCES;
+	
+	if (Variable == NULL)
+		return EFI_INVALID_PARAMETER;
+	
+	Variable->Data = AllocateZeroPool(sizeof(EFI_VARIABLE_AUTHENTICATION_2));
+	if (Variable->Data == NULL)
+		ReportErrorAndExit(L"Failed to create empty variable: %r\n", Status);	
+
+	// Don't ask me how I found that one can simply cannot use mTime here...
+	Status = gRT->GetTime(&Variable->Data->TimeStamp, NULL);
+	if (EFI_ERROR(Status))
+		ReportErrorAndExit(L"Failed to get current time: %r\n", Status);	
+	Variable->Data->TimeStamp.Nanosecond = 0;
+	Variable->Data->TimeStamp.TimeZone = 0;
+	Variable->Data->TimeStamp.Daylight = 0;	
+	CopyGuid(&Variable->Data->AuthInfo.CertType, &gEfiCertPkcs7Guid);
+	Variable->Data->AuthInfo.Hdr.dwLength = OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData);
+	Variable->Data->AuthInfo.Hdr.wRevision = 0x0200;
+	Variable->Data->AuthInfo.Hdr.wCertificateType = WIN_CERT_TYPE_EFI_GUID;
+	Variable->Size = OFFSET_OF_AUTHINFO2_CERT_DATA;
+
+exit:
+	if (EFI_ERROR(Status)) {
+		Variable->Size = 0;
+		SafeFree(Variable->Data);
+	}
+	return Status;
+}
+
 EFI_STATUS PopulateAuthVar(
 	IN OUT MOSBY_ENTRY *Entry,
 	IN MOSBY_CRED *Credentials
@@ -524,7 +558,7 @@ EFI_STATUS SignAuthVar(
 	CONST struct {
 		UINT8 *Ptr;
 		UINTN Size;
-	} SignableElement[5] = {
+	} SignableElement[] = {
 		{ (UINT8*)VariableName, StrLen(VariableName) * sizeof(CHAR16) },
 		{ (UINT8*)VariableGuid, sizeof(EFI_GUID) },
 		{ (UINT8*)&Attributes, sizeof(Attributes) },

@@ -215,7 +215,7 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE;
+	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
 	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
@@ -242,7 +242,7 @@ EFI_STATUS EFIAPI efi_main(
 		ArgvCopy = Argv;
 		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-h] [-i] [-n] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
+				Print(L"Usage: Mosby [-h] [-d] [-i] [-n] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
@@ -273,6 +273,10 @@ EFI_STATUS EFIAPI efi_main(
 					SafeFree(SBat);
 				}
 				goto exit;
+			} else if (StrCmp(ArgvCopy[1], L"-d") == 0) {
+				CreateNoPkFile = TRUE;
+				ArgvCopy += 1;
+				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-n") == 0) {
 				LogToFile = FALSE;
 				ArgvCopy += 1;
@@ -633,6 +637,29 @@ install:
 					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
 			if (EFI_ERROR(Status))
 				ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
+		}
+	}
+
+	// If requested, create a NoPK.auth package, that can be used (with KeyTool or other utilities)
+	// to delete the PK and set the platform back into Setup Mode.
+	if (CreateNoPkFile) {
+		MOSBY_VARIABLE NoPk = { 0 };
+		if (SimpleFileExistsByPath(gBaseImageHandle, L"NoPK.auth")) {
+			RecallPrint(L"WARNING: NOT creating a PK deletion package since 'NoPK.auth' already exists\n");
+		} else {
+			Status = CreateEmptyAuthVar(&NoPk);
+			if (Status == EFI_SUCCESS)
+				Status = SignAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid, UEFI_VAR_NV_BS_RT_AT, &NoPk, &PkCred);
+			if (EFI_ERROR(Status)) {
+				RecallPrint(L"WARNING: Could not create PK deletion package: %d\n", Status);
+			} else {
+				Status = SimpleFileWriteAllByPath(gBaseImageHandle, L"NoPK.auth", NoPk.Size, NoPk.Data);
+				if (EFI_ERROR(Status))
+					RecallPrint(L"WARNING: Could not create 'NoPK.auth': %d\n", Status);
+				else
+					RecallPrint(L"Saved PK deletion package as 'NoPK.auth'\n");
+			}
+			SafeFree(NoPk.Data);
 		}
 	}
 

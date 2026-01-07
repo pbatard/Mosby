@@ -50,6 +50,10 @@ EFI_STATUS CertToAuthVar(
 	IN CONST BOOLEAN UseMicrosoftGUID
 );
 
+EFI_STATUS CreateEmptyAuthVar(
+	OUT MOSBY_VARIABLE *Variable
+);
+
 EFI_STATUS PopulateAuthVar(
 	IN OUT MOSBY_ENTRY *Entry,
 	IN MOSBY_CRED *Credentials
