@@ -394,7 +394,7 @@ EFI_STATUS CreateEmptyAuthVar(
 	if (Variable->Data == NULL)
 		ReportErrorAndExit(L"Failed to create empty variable: %r\n", Status);	
 
-	// Don't ask me how I found that one can simply cannot use mTime here...
+	// Don't ask me how I found that one does not simply use mTime here...
 	Status = gRT->GetTime(&Variable->Data->TimeStamp, NULL);
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"Failed to get current time: %r\n", Status);	
@@ -436,16 +436,18 @@ EFI_STATUS PopulateAuthVar(
 		ReportErrorAndExit(L"'%s' is too small to be a valid certificate or signature list\n", Entry->Path);
 
 	// Set default attributes for authenticated variable
-	switch(Entry->Type) {
-		case MOK:
-			Entry->Attrs = UEFI_VAR_NV_BS_AP;
-			break;
-		case PK:
-			Entry->Attrs = UEFI_VAR_NV_BS_RT_AT;
-			break;
-		default:
-			Entry->Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
-			break;
+	if (Entry->Attrs == 0) {
+		switch(Entry->Type) {
+			case MOK:
+				Entry->Attrs = UEFI_VAR_NV_BS_AP;
+				break;
+			case PK:
+				Entry->Attrs = UEFI_VAR_NV_BS_RT_AT;
+				break;
+			default:
+				Entry->Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
+				break;
+		}
 	}
 
 	// Check for signed ESL (PKCS#7 only)
