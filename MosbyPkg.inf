@@ -66,9 +66,11 @@
   gEfiSmbios3TableGuid
 
 [Protocols]
+  gEfiBlockIoProtocolGuid
   gEfiLoadedImageProtocolGuid
   gEfiSimpleFileSystemProtocolGuid
   gEfiRngProtocolGuid
+  gEfiTcg2ProtocolGuid
 
 [Pcd]
   gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultLang

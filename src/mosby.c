@@ -361,6 +361,32 @@ EFI_STATUS EFIAPI efi_main(
 		RecallPrintRestore();
 		if (Sel != 0)
 			goto exit;
+
+		/* Display an additional warning for TPM measured boot with BitLocker */
+		if (SystemHasTpm() && SystemHasBitLocker()) {
+			RecallPrint(L"Notice: TPM and BitLocker detected.\n");
+			STATIC CONST CHAR16 *WTF_RISC_COMPILER1[] = {
+				L"TPM MEASURED BOOT WARNING",
+				L"",
+				L"A TPM, along with BitLocker partitions, were detected on this PC.",
+				L"",
+				L"Because of a feature called 'TPM Measured Boot', if  your  system",
+				L"partition is encrypted, this could result in Windows refusing  to",
+				L"boot after the Secure Boot variables have been updated, until you",
+				L"provide it with your BitLocker recovery key...                   ",
+				L"",
+				L"If you have your recovery key available, or are  sure  that  your",
+				L"system partition is not encrypted, you can select 'Proceed' here.",
+				L"",
+				L"If you are unsure about the above, and don't have your  BitLocker",
+				L"recovery key, it is recommended that you select 'Abort'.         ",
+				NULL
+			};
+			Sel = ConsoleAlertBox(WTF_RISC_COMPILER1, (CONST CHAR16 *[]){ L"PROCEED", L"ABORT", NULL });
+			RecallPrintRestore();
+			if (Sel != 0)
+				goto exit;
+		}
 	}
 
 	/* If we have an existing cert for a previously generated DB credential, try to reuse it */
@@ -642,7 +668,7 @@ install:
 
 	// If requested, create a NoPK.auth package, that can be used (with KeyTool or other utilities)
 	// to delete the PK and set the platform back into Setup Mode.
-	if (CreateNoPkFile) {
+	if (CreateNoPkFile && !UpdateMode) {
 		MOSBY_VARIABLE NoPk = { 0 };
 		if (SimpleFileExistsByPath(gBaseImageHandle, L"NoPK.auth")) {
 			RecallPrint(L"WARNING: NOT creating a PK deletion package since 'NoPK.auth' already exists\n");
@@ -667,11 +693,11 @@ install:
 		Reboot = ExitNotice(GenDBCred);
 
 exit:
-	if (EFI_ERROR(Status) && DisplayErrorNotice && !gOptionSilent) {
+	if (EFI_ERROR(Status) && DisplayErrorNotice && !gOptionSilent && !UpdateMode) {
 		// The RISC-V gcc compiler adds implicit memcpy() calls here if you declare the text
 		// blurb inline, *LIKE WE DO EVERYWHERE ELSE ABOVE WITHOUT ISSUE*, which of course
 		// breaks UEFI app compilation. So we have to declare a static variable. WTF?!?
-		STATIC CONST CHAR16 *WTF_RISC_COMPILER[] = {
+		STATIC CONST CHAR16 *WTF_RISC_COMPILER2[] = {
 			L"ERROR",
 			L"",
 			L"Mosby was NOT able to install your Secure Boot variables.        ",
@@ -686,7 +712,7 @@ exit:
 			L"",
 			NULL
 		};
-		ConsoleAlertBox(WTF_RISC_COMPILER);
+		ConsoleAlertBox(WTF_RISC_COMPILER2, (CONST CHAR16 *[]){ L"OK", NULL });
 		RecallPrintRestore();
 	}
 	for (i = 0; i < List.Size; i++)

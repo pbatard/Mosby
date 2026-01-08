@@ -332,13 +332,15 @@ INTN ConsoleOkCancel(
 	return ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"OK", L"Cancel", NULL }, 0);
 }
 
-VOID ConsoleAlertBox(
-	IN CONST CHAR16 *StrArray[]
+INTN ConsoleAlertBox(
+	IN CONST CHAR16 *StrArray[],
+	IN CONST CHAR16 *Selectors[]
 )
 {
 	BackGroundColor = EFI_BACKGROUND_RED;
-	ConsoleSelect(StrArray, (CONST CHAR16 *[]){ L"OK", 0 }, 0);
+	INTN Sel = ConsoleSelect(StrArray, Selectors, 100000);
 	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
+	return Sel;
 }
 
 VOID ConsoleErrorBox(
@@ -355,7 +357,7 @@ VOID ConsoleErrorBox(
 	ErrArray[2] = Err;
 
 	BackGroundColor = EFI_BACKGROUND_RED;
-	ConsoleAlertBox(ErrArray);
+	ConsoleAlertBox(ErrArray, (CONST CHAR16 *[]){ L"OK", NULL });
 	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 }
 
@@ -377,7 +379,7 @@ VOID ConsoleError(
 	ErrArray[2] = Str;
 
 	BackGroundColor = EFI_BACKGROUND_RED;
-	ConsoleAlertBox(ErrArray);
+	ConsoleAlertBox(ErrArray, (CONST CHAR16 *[]){ L"OK", NULL });
 	BackGroundColor = DEFAULT_BACKGROUND_COLOR;
 }
 

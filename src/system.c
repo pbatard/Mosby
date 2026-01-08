@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") UEFI system info
- * Copyright © 2025 Pete Batard <pete@akeo.ie>
+ * Copyright © 2025-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,9 @@
 #include <Guid/SmBios.h>
 
 #include <IndustryStandard/SmBios.h>
+
+#include <Protocol/BlockIo.h>
+#include <Protocol/Tcg2Protocol.h>
 
 #include <Uefi/UefiBaseType.h>
 
@@ -138,4 +141,45 @@ EFI_STATUS PrintSystemInfo(VOID)
 	}
 
 	return EFI_SUCCESS;
+}
+
+BOOLEAN SystemHasTpm(VOID)
+{
+	EFI_TCG2_PROTOCOL *Tcg2;
+	
+	return !EFI_ERROR(gBS->LocateProtocol(&gEfiTcg2ProtocolGuid, NULL, (VOID **)&Tcg2));
+}
+
+BOOLEAN SystemHasBitLocker(VOID)
+{
+	BOOLEAN Found = FALSE;
+	EFI_STATUS Status;
+	EFI_HANDLE *Handles = NULL;
+	EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
+	UINTN HandleCount, i;
+	UINT8 *Sector = NULL;
+
+	Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &HandleCount, &Handles);
+	if (EFI_ERROR(Status))
+		return FALSE;
+
+	for (i = 0; i < HandleCount && !Found; i++) {
+		Status = gBS->HandleProtocol(Handles[i], &gEfiBlockIoProtocolGuid, (VOID **)&BlockIo);
+		if (EFI_ERROR(Status) || !BlockIo->Media->LogicalPartition || !BlockIo->Media->MediaPresent)
+			continue;
+
+		// Read the first sector, and look for the BitLocker "Full Volume Encryption File System" magic
+		Sector = AllocateZeroPool(BlockIo->Media->BlockSize);
+		if (Sector == NULL)
+			continue;
+		Status = BlockIo->ReadBlocks(BlockIo, BlockIo->Media->MediaId, 0, BlockIo->Media->BlockSize, Sector);
+		if (EFI_ERROR(Status))
+			continue;
+		if (CompareMem(&Sector[3], "-FVE-FS-", 8) == 0)
+			Found = TRUE;
+		FreePool(Sector);
+	}
+
+	FreePool(Handles);
+	return Found;
 }

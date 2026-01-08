@@ -158,3 +158,7 @@ EFI_STATUS InitializeList(
 );
 
 EFI_STATUS PrintSystemInfo(VOID);
+
+BOOLEAN SystemHasTpm(VOID);
+
+BOOLEAN SystemHasBitLocker(VOID);
