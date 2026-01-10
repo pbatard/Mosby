@@ -54,6 +54,34 @@ extern MOSBY_KEY_INFO KeyInfo[MAX_TYPES];
 
 STATIC EFI_TIME mTime = { 0 };
 
+/*
+ * d2i_###() and i2d_###() modify the pointer being passed, wich is a STUPID-ASS
+ * API DESIGN DECISION from the OpenSSL folks!!! Fix this with a *SANE* API.
+ */
+static __inline X509 *d2i_X509_proper(X509 **px, const unsigned char *in, int len)
+{
+	const unsigned char *_in = in;
+	return d2i_X509(px, &_in, len);
+}
+
+static __inline int i2d_X509_proper(X509 *x, unsigned char *out)
+{
+	unsigned char *_out = out;
+	return i2d_X509(x, &_out);
+}
+
+static __inline int i2d_PKCS12_proper(PKCS12 *val_in, unsigned char *der_out)
+{
+	unsigned char *_der_out = der_out;
+	return i2d_PKCS12(val_in, &_der_out);
+}
+
+static __inline int i2d_PKCS7_SIGNED_proper(PKCS7_SIGNED *val_in, unsigned char *der_out)
+{
+	unsigned char *_der_out = der_out;
+	return i2d_PKCS7_SIGNED(val_in, &_der_out);
+}
+
 /* For OpenSSL error reporting */
 STATIC int OpenSSLErrorCallback(
 	CONST CHAR8 *AsciiString,
@@ -229,7 +257,7 @@ EFI_STATUS SaveCredentials(
 )
 {
 	EFI_STATUS Status;
-	UINT8 *Buffer = NULL, *Ptr;
+	UINT8 *Buffer = NULL;
 	CHAR16 Path[MAX_PATH];
 	PKCS12* p12 = NULL;
 	BIO *bio = NULL;
@@ -247,14 +275,13 @@ EFI_STATUS SaveCredentials(
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 
 	// Save certificate and key as .pfx
-	Size = (INTN)i2d_PKCS12(p12, NULL);
+	Size = (INTN)i2d_PKCS12_proper(p12, NULL);
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Buffer = AllocateZeroPool(Size);
 	if (Buffer == NULL)
 		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate PFX buffer\n");
-	Ptr = Buffer;	// i2d_###() modifies the pointer...
-	Size = (INTN)i2d_PKCS12(p12, &Ptr);
+	Size = (INTN)i2d_PKCS12_proper(p12, Buffer);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.pfx", BaseName);
@@ -279,14 +306,13 @@ EFI_STATUS SaveCredentials(
 
 #if 0
 	// Save certificate as DER encoded .cer
-	Size = (INTN)i2d_X509(Credentials->Cert, NULL);
+	Size = (INTN)i2d_X509_proper(Credentials->Cert, NULL);
 	if (Size <= 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	Buffer = AllocateZeroPool(Size);
 	if (Buffer == NULL)
 		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate DER buffer\n");
-	Ptr = Buffer;	// i2d_###() modifies the pointer
-	Size = (INTN)i2d_X509(Credentials->Cert, &Ptr);
+	Size = (INTN)i2d_X509_proper(Credentials->Cert, Buffer);
 	if (Size < 0)
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	UnicodeSPrint(Path, ARRAY_SIZE(Path), L"%s.cer", BaseName);
@@ -339,14 +365,13 @@ EFI_STATUS CertToAuthVar(
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	EFI_SIGNATURE_DATA *Data = NULL;
 	INTN Size;
-	UINT8 *Ptr;
 
 	if (Cert == NULL || Variable == NULL)
 		return EFI_INVALID_PARAMETER;
 
 	SetMem(Variable, sizeof(MOSBY_VARIABLE), 0);
 
-	Size = (INTN)i2d_X509((X509*)Cert, NULL);
+	Size = (INTN)i2d_X509_proper((X509*)Cert, NULL);
 	if (Size <= 0)
 		goto exit;
 	Esl = AllocateZeroPool(sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA) - 1 + Size);
@@ -358,8 +383,7 @@ EFI_STATUS CertToAuthVar(
 	Esl->SignatureListSize = sizeof(EFI_SIGNATURE_LIST) + Esl->SignatureSize;
 
 	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
-	Ptr = &Data->SignatureData[0];
-	i2d_X509((X509*)Cert, &Ptr);
+	i2d_X509_proper((X509*)Cert, &Data->SignatureData[0]);
 
 	// Use either the Microsoft VendorGUID or our own, to identify who provisioned the variable
 	CopyGuid(&Data->SignatureOwner, UseMicrosoftGUID ? &gEfiMicrosoftGuid : &gEfiMosbyGuid);
@@ -422,7 +446,6 @@ EFI_STATUS PopulateAuthVar(
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
 	UINTN HeaderSize;
-	CONST UINT8 *Ptr;
 	EFI_SIGNATURE_LIST *Esl = NULL;
 	MOSBY_CRED Cred = { 0 };
 	EFI_VARIABLE_AUTHENTICATION_2 *AuthVar = NULL;
@@ -484,8 +507,7 @@ EFI_STATUS PopulateAuthVar(
 	}
 
 	// Check for a DER encoded X509 certificate
-	Ptr = Entry->Buffer.Data;	// d2i_###() modifies the pointer
-	Status = CertToAuthVar(d2i_X509(NULL, &Ptr, Entry->Buffer.Size), &Entry->Variable,
+	Status = CertToAuthVar(d2i_X509_proper(NULL, Entry->Buffer.Data, Entry->Buffer.Size), &Entry->Variable,
 		Entry->Flags & USE_MICROSOFT_GUID);
 	if (Status == EFI_SUCCESS)
 		goto exit;
@@ -570,7 +592,7 @@ EFI_STATUS SignAuthVar(
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
 	UINT8 *SignData = NULL;
 	EFI_VARIABLE_AUTHENTICATION_2 *SignedVariable = NULL;
-	UINT8 *Payload, *Ptr;
+	UINT8 *Payload;
 	UINTN i, SignDataSize, SignatureSize, Offset;
 	BIO *bio;
 	PKCS7 *p7;
@@ -625,7 +647,7 @@ EFI_STATUS SignAuthVar(
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
 	if (!PKCS7_final(p7, bio, flags))
 		ReportOpenSSLErrorAndExit(EFI_PROTOCOL_ERROR);
-	SignatureSize = i2d_PKCS7_SIGNED(p7->d.sign, NULL);
+	SignatureSize = i2d_PKCS7_SIGNED_proper(p7->d.sign, NULL);
 
 	// Create the signed variable
 	SignedVariable = AllocateZeroPool(Variable->Size + SignatureSize);
@@ -633,8 +655,7 @@ EFI_STATUS SignAuthVar(
 		Abort(EFI_OUT_OF_RESOURCES, L"Failed to allocate buffer for signed variable\n");
 	CopyMem(SignedVariable, Variable->Data, OFFSET_OF_AUTHINFO2_CERT_DATA);
 	SignedVariable->AuthInfo.Hdr.dwLength = OFFSET_OF(WIN_CERTIFICATE_UEFI_GUID, CertData) + SignatureSize;
-	Ptr = SignedVariable->AuthInfo.CertData;
-	SignatureSize = i2d_PKCS7_SIGNED(p7->d.sign, &Ptr);
+	SignatureSize = i2d_PKCS7_SIGNED_proper(p7->d.sign, SignedVariable->AuthInfo.CertData);
 	Payload = (UINT8*)SignedVariable;
 	Payload = &Payload[OFFSET_OF_AUTHINFO2_CERT_DATA + SignatureSize];
 	CopyMem(Payload, SignableElement[PAYLOAD].Ptr, SignableElement[PAYLOAD].Size);
