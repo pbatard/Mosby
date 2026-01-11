@@ -85,7 +85,7 @@
 #define USE_BUFFER                  0x01
 #define NO_INSTALL                  0x02
 #define ALLOW_UPDATE                0x04
-#define USE_MICROSOFT_GUID          0x08
+#define ALLOCATED_BUFFER            0x08
 
 /* Exclusive sets */
 #define MOSBY_SET1                  0x01
@@ -139,10 +139,11 @@ typedef struct {
 	UINT8 Type;
 	UINT8 Flags;
 	UINT8 Set;
-	UINT32 Attrs;
-	CHAR16 *Path;
 	CHAR8 *Url; 
 	CHAR8 *Description;
+	CHAR16 *Path;
+	UINT32 Attrs;
+	EFI_GUID *Owner;
 	MOSBY_BUFFER Buffer;
 	MOSBY_VARIABLE Variable;
 } MOSBY_ENTRY;

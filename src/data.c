@@ -7426,7 +7426,7 @@ EFI_STATUS InitializeList(
 		return EFI_INVALID_PARAMETER;
 	ZeroMem(List, sizeof(MOSBY_LIST));
 	List->Entry[List->Size].Type = KEK;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"kek_2011_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?LinkId=321185";
@@ -7435,7 +7435,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = kek_2011_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = KEK;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"kek_2023_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239775";
@@ -7444,7 +7444,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = kek_2023_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Set = MOSBY_SET1;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"db_2011_win_ms.cer";
@@ -7454,7 +7454,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_2011_win_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"db_2011_3rd_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=321194";
@@ -7463,7 +7463,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_2011_3rd_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"db_2023_win_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239776";
@@ -7472,7 +7472,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_2023_win_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"db_2023_3rd_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2239872";
@@ -7481,7 +7481,7 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Buffer.Size = db_2023_3rd_ms_cer_len;
 	List->Size++;
 	List->Entry[List->Size].Type = DB;
-	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;
+	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;
 	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 	List->Entry[List->Size].Path = L"db_2023_opt_ms.cer";
 	List->Entry[List->Size].Url = "https://go.microsoft.com/fwlink/?linkid=2284009";

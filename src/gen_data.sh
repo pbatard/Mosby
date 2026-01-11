@@ -202,7 +202,7 @@ for file in "${order[@]}"; do
   elif [[ "$type" == "DBX" ]]; then
     echo "	List->Entry[List->Size].Flags = ALLOW_UPDATE;"
   elif [[ "$type" == "DB" || "$type" == "KEK" ]]; then
-    echo "	List->Entry[List->Size].Flags = USE_MICROSOFT_GUID;"
+    echo "	List->Entry[List->Size].Owner = &gEfiMicrosoftGuid;"
   fi
   if [[ "${exclusive_set[${file}]}" != "" ]]; then
     echo "	List->Entry[List->Size].Set = ${exclusive_set[${file}]};"

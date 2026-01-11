@@ -358,7 +358,7 @@ VOID FreeCredentials(
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
 	OUT MOSBY_VARIABLE *Variable,
-	IN CONST BOOLEAN UseMicrosoftGUID
+	IN CONST EFI_GUID *Owner
 )
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
@@ -385,8 +385,8 @@ EFI_STATUS CertToAuthVar(
 	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
 	i2d_X509_proper((X509*)Cert, &Data->SignatureData[0]);
 
-	// Use either the Microsoft VendorGUID or our own, to identify who provisioned the variable
-	CopyGuid(&Data->SignatureOwner, UseMicrosoftGUID ? &gEfiMicrosoftGuid : &gEfiMosbyGuid);
+	// If no explicit owner was specified, we add ourselves as the owner of naked certs
+	CopyGuid(&Data->SignatureOwner, (Owner == NULL) ? &gEfiMosbyGuid : Owner);
 
 	Variable->Size = Esl->SignatureListSize;
 	Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
@@ -507,8 +507,7 @@ EFI_STATUS PopulateAuthVar(
 	}
 
 	// Check for a DER encoded X509 certificate
-	Status = CertToAuthVar(d2i_X509_proper(NULL, Entry->Buffer.Data, Entry->Buffer.Size), &Entry->Variable,
-		Entry->Flags & USE_MICROSOFT_GUID);
+	Status = CertToAuthVar(d2i_X509_proper(NULL, Entry->Buffer.Data, Entry->Buffer.Size), &Entry->Variable, Entry->Owner);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 
@@ -516,8 +515,7 @@ EFI_STATUS PopulateAuthVar(
 	bio = BIO_new_mem_buf(Entry->Buffer.Data, Entry->Buffer.Size);
 	if (bio == NULL)
 		ReportErrorAndExit(L"Failed to create X509 buffer\n");
-	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable,
-		Entry->Flags & USE_MICROSOFT_GUID);
+	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable, Entry->Owner);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 	BIO_free(bio);	// Can't reuse the bio
@@ -529,7 +527,7 @@ EFI_STATUS PopulateAuthVar(
 	p12 = d2i_PKCS12_bio(bio, NULL);
 	// Need to read both the key and cert, even if we don't use the key here
 	if (PKCS12_parse(p12, NULL, (EVP_PKEY**)&Cred.Key, (X509**)&Cred.Cert, NULL)) {
-		Status = CertToAuthVar(Cred.Cert, &Entry->Variable, Entry->Flags & USE_MICROSOFT_GUID);
+		Status = CertToAuthVar(Cred.Cert, &Entry->Variable, Entry->Owner);
 		PKCS12_free(p12);
 		FreeCredentials(&Cred);
 		if (Status == EFI_SUCCESS)

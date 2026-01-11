@@ -38,7 +38,7 @@ STATIC BOOLEAN gOptionSilent = FALSE;
 STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
 
-/* Microsoft GUID - Not yet defined in EDK2 */
+/* Microsoft GUID - Not yet globally defined in EDK2 */
 EFI_GUID gEfiMicrosoftGuid =
 	{ 0x77FA9ABD, 0x0359, 0x4D32, { 0xBD, 0x60, 0x28, 0xF4, 0xE7, 0x8F, 0x78, 0x4B } };
 
@@ -221,7 +221,7 @@ EFI_STATUS EFIAPI efi_main(
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
 	UINTN i, Size;
-	UINT16* SystemSSPV = NULL;
+	UINT16 *SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
 	MOSBY_CRED PkCred = { 0 }, DbCred = { 0 };
@@ -463,6 +463,8 @@ process_binaries:
 				&List.Entry[i].Buffer.Size, (VOID**)&List.Entry[i].Buffer.Data);
 			if (EFI_ERROR(Status))
 				goto exit;
+			List.Entry[i].Flags |= ALLOCATED_BUFFER;
+			List.Entry[i].Owner = &gEfiMosbyGuid;
 		}
 		switch (List.Entry[i].Type) {
 			case SSPV:
@@ -538,7 +540,7 @@ process_binaries:
 		Status = GenerateCredentials(DbSubject, &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i].Variable, FALSE);
+		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i].Variable, &gEfiMosbyGuid);
 		if (EFI_ERROR(Status))
 			goto exit;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &DbCred);
@@ -563,10 +565,9 @@ process_binaries:
 		i = List.Size;
 		List.Entry[i].Type = PK;
 		List.Entry[i].Description = PkSubject;
-		Status = CertToAuthVar(PkCred.Cert, &List.Entry[i].Variable, FALSE);
+		Status = CertToAuthVar(PkCred.Cert, &List.Entry[i].Variable, &gEfiMosbyGuid);
 		if (EFI_ERROR(Status))
 			goto exit;
-		// PK must be signed
 		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
 		Status = SignAuthVar(KeyInfo[PK].VariableName, KeyInfo[PK].VariableGuid,
 			List.Entry[i].Attrs, &List.Entry[i].Variable, &PkCred);
@@ -715,8 +716,11 @@ exit:
 		ConsoleAlertBox(WTF_RISC_COMPILER2, (CONST CHAR16 *[]){ L"OK", NULL });
 		RecallPrintRestore();
 	}
-	for (i = 0; i < List.Size; i++)
+	for (i = 0; i < List.Size; i++) {
+		if (List.Entry[i].Flags & ALLOCATED_BUFFER)
+			FreePool(List.Entry[i].Buffer.Data);
 		FreePool(List.Entry[i].Variable.Data);
+	}
 	FreeCredentials(&DbCred);
 	FreeCredentials(&PkCred);
 	FreePool(Argv);

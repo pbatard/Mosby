@@ -47,7 +47,7 @@ VOID FreeCredentials(
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
 	OUT MOSBY_VARIABLE *Variable,
-	IN CONST BOOLEAN UseMicrosoftGUID
+	IN CONST EFI_GUID *Owner
 );
 
 EFI_STATUS CreateEmptyAuthVar(
