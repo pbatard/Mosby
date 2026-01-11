@@ -405,6 +405,47 @@ exit:
 	return Status;
 }
 
+EFI_STATUS CertFromEsl(
+	IN MOSBY_BUFFER* Buffer,
+	IN UINTN Index,
+	OUT MOSBY_BUFFER* Cert
+)
+{
+	UINTN i = 0, Offset;
+	EFI_SIGNATURE_LIST* Esl;
+
+	for (Offset = 0; Offset + sizeof(EFI_SIGNATURE_LIST) < Buffer->Size; Offset += Esl->SignatureListSize) {
+		Esl = (EFI_SIGNATURE_LIST*)&Buffer->Data[Offset];
+		// Only support X509 certs
+		if (!CompareGuid(&Esl->SignatureType, &gEfiCertX509Guid))
+			continue;
+		if (i++ != Index)
+			continue;
+		Cert->Data = &Buffer->Data[Offset + sizeof(EFI_SIGNATURE_LIST) + Esl->SignatureHeaderSize];
+		// Assume a single cert of Esl->SignatureSize
+		Cert->Size = Esl->SignatureSize;
+		return EFI_SUCCESS;
+	}
+	return EFI_NOT_FOUND;
+}
+
+CHAR8* GetCommonName(
+	IN CONST MOSBY_BUFFER Cert
+)
+{
+	int Length;
+	CHAR8 *CommonName;
+	X509_NAME *SubjectName;
+
+	SubjectName = X509_get_subject_name((X509*)d2i_X509_proper(NULL, Cert.Data, Cert.Size));
+	Length = X509_NAME_get_text_by_NID(SubjectName, NID_commonName, NULL, 0) + 1;
+	if (Length <= 1 || (CommonName = AllocateZeroPool(Length)) == NULL)
+		return NULL;
+	if (X509_NAME_get_text_by_NID(SubjectName, NID_commonName, CommonName, Length) == -1)
+		SafeFree(CommonName);
+	return CommonName;
+}
+
 EFI_STATUS CreateEmptyAuthVar(
 	OUT MOSBY_VARIABLE *Variable
 )

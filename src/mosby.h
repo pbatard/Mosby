@@ -86,6 +86,7 @@
 #define NO_INSTALL                  0x02
 #define ALLOW_UPDATE                0x04
 #define ALLOCATED_BUFFER            0x08
+#define FROM_DEFAULTS               0x10
 
 /* Exclusive sets */
 #define MOSBY_SET1                  0x01

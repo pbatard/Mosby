@@ -216,17 +216,18 @@ EFI_STATUS EFIAPI efi_main(
 )
 {
 	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
-	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE;
+	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE, AddDefaults = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
-	UINTN i, Size;
+	UINTN i, j, k, def[3] = { 0 }, Size;
 	UINT16 *SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
+	MOSBY_BUFFER DefaultKey[ARRAY_SIZE(def)] = { 0 }, DefaultCert;
 	MOSBY_CRED PkCred = { 0 }, DbCred = { 0 };
 	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL;
-	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH];
+	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH], DefaultKeyName[ARRAY_SIZE(def)][16];
 	MOSBY_LIST List;
 
 	gBaseImageHandle = BaseImageHandle;
@@ -279,6 +280,10 @@ EFI_STATUS EFIAPI efi_main(
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-n") == 0) {
 				LogToFile = FALSE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"-r") == 0) {
+				AddDefaults = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-s") == 0) {
@@ -454,7 +459,7 @@ process_binaries:
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"Failed to generate PK signing credentials - Aborting\n");
 
-	/* Process binaries that have been provided to the application */
+	/* Process the files that were provided */
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Variable.Data != NULL)
 			continue;
@@ -466,6 +471,63 @@ process_binaries:
 			List.Entry[i].Flags |= ALLOCATED_BUFFER;
 			List.Entry[i].Owner = &gEfiMosbyGuid;
 		}
+	}
+
+	/* Optionally, add the manufacturer's default DB, KEK and PK certs we don't already include */
+	for (k = PK; AddDefaults && k <= DB; k++) {
+		if (k >= ARRAY_SIZE(def))
+			Abort(EFI_NO_MAPPING, L"Internal error\n");
+		/* Read the manufacturer's '###Default' Secure Boot variables if present */
+		UnicodeSPrint(DefaultKeyName[k], sizeof(DefaultKeyName[k]), L"%sDefault", KeyInfo[k].VariableName);
+#if 0
+		Status = SimpleFileReadAllByPath(gBaseImageHandle, DefaultKeyName[k], &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
+#else
+		Status = ReadVariable(DefaultKeyName[k], KeyInfo[k].VariableGuid, &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
+#endif
+		if (EFI_ERROR(Status))
+			continue;
+
+		/* Process each of the ###Default ESL's certificates */
+		for (j = 0; CertFromEsl(&DefaultKey[k], j, &DefaultCert) == EFI_SUCCESS; j++) {
+			Size = DefaultCert.Size - OFFSET_OF(EFI_SIGNATURE_DATA, SignatureData);
+			for (i = 0; i < List.Size; i++) {
+				if (List.Entry[i].Type != k || List.Entry[i].Variable.Data != NULL)
+					continue;
+				if (Size != List.Entry[i].Buffer.Size)
+					continue;
+				if (CompareMem(((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureData, List.Entry[i].Buffer.Data, Size) == 0)
+					break;
+			}
+			if (i == List.Size && List.Size < MOSBY_MAX_LIST_SIZE) {
+				/* Cert is not already in our list => Add the whole ESL */
+				List.Entry[List.Size].Type = k;
+				/* In some weird decision, whereas most platforms actively reject them, HP platforms, such as
+				 * the ProDesk 600, permissively accept PK installations where the cert and signing key don't
+				 * match, but *only* as long as the owner GUID for the ESL is not the same as HP's... So we
+				 * force gEfiMosbyGuid for the PK (but not the KEK/DB, since HP doesn't care for these). */
+				List.Entry[List.Size].Owner = (k == PK) ? &gEfiMosbyGuid : &((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureOwner;
+				List.Entry[List.Size].Buffer.Data = ((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureData;
+				List.Entry[List.Size].Buffer.Size = Size;
+				List.Entry[List.Size].Description = GetCommonName(List.Entry[List.Size].Buffer);
+				if (List.Entry[List.Size].Description == NULL)
+					List.Entry[List.Size].Path = DefaultKeyName[k];
+				List.Entry[List.Size].Flags = FROM_DEFAULTS;
+				List.Entry[List.Size].Attrs = (k == PK) ? UEFI_VAR_NV_BS_RT_AT : UEFI_VAR_NV_BS_RT_AT_AP;
+				List.Size++;
+				def[k]++;
+				break;
+			}
+		}
+	}
+	if (AddDefaults) {
+		if (def[PK] + def[KEK] + def[DB] > 0)
+			RecallPrint(L"Reusing %d PK, %d KEK(s) and %d DB(s) from manufacturer's defaults\n", def[PK], def[KEK], def[DB]);
+		else
+			RecallPrint(L"Notice: No additional PK/KEK/DB were found on this platform\n");
+	}
+
+	/* Process the finalized list, with all the certs, and generate the AuthVars */
+	for (i = 0; i < List.Size; i++) {
 		switch (List.Entry[i].Type) {
 			case SSPV:
 				if (List.Entry[i].Buffer.Size != 4 * sizeof(UINT16))
@@ -558,7 +620,7 @@ process_binaries:
 
 	/* Set up the PK if none was specified */
 	LastEntry = RemoveDuplicates(PK, &List);
-	if (LastEntry < 0) {
+	if (LastEntry < 0 || List.Entry[LastEntry].Flags & FROM_DEFAULTS) {
 		if (List.Size >= MOSBY_MAX_LIST_SIZE)
 			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		RecallPrint(L"Generating PK certificate...\n");
@@ -662,8 +724,15 @@ install:
 			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, List.Entry[i].Attrs,
 					(List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size : List.Entry[i].Variable.Size,
 					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
-			if (EFI_ERROR(Status))
-				ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
+			/* If we managed to install a PK, we're done */
+			if (Type == PK && Status == EFI_SUCCESS)
+				break;
+			if (EFI_ERROR(Status)) {
+				if ((Type == PK) && (List.Entry[i].Flags & FROM_DEFAULTS))
+					RecallPrint(L"Notice: Manufacturer PK could not be reused (%r)\n", Status);
+				else
+					ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
+			}
 		}
 	}
 
@@ -719,8 +788,12 @@ exit:
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Flags & ALLOCATED_BUFFER)
 			FreePool(List.Entry[i].Buffer.Data);
+		if (List.Entry[i].Flags & FROM_DEFAULTS)
+			FreePool(List.Entry[i].Description);
 		FreePool(List.Entry[i].Variable.Data);
 	}
+	for (i = 0; i < ARRAY_SIZE(DefaultKey); i++)
+		FreePool(DefaultKey[i].Data);
 	FreeCredentials(&DbCred);
 	FreeCredentials(&PkCred);
 	FreePool(Argv);

@@ -50,6 +50,16 @@ EFI_STATUS CertToAuthVar(
 	IN CONST EFI_GUID *Owner
 );
 
+EFI_STATUS CertFromEsl(
+	IN MOSBY_BUFFER* Buffer,
+	IN UINTN Index,
+	OUT MOSBY_BUFFER* Cert
+);
+
+CHAR8* GetCommonName(
+	IN CONST MOSBY_BUFFER Cert
+);
+
 EFI_STATUS CreateEmptyAuthVar(
 	OUT MOSBY_VARIABLE *Variable
 );
