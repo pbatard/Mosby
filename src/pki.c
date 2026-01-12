@@ -406,9 +406,9 @@ exit:
 }
 
 EFI_STATUS CertFromEsl(
-	IN MOSBY_BUFFER* Buffer,
+	IN MOSBY_BUFFER *Buffer,
 	IN UINTN Index,
-	OUT MOSBY_BUFFER* Cert
+	OUT MOSBY_BUFFER *Cert
 )
 {
 	UINTN i = 0, Offset;
@@ -430,14 +430,14 @@ EFI_STATUS CertFromEsl(
 }
 
 CHAR8* GetCommonName(
-	IN CONST MOSBY_BUFFER Cert
+	IN CONST MOSBY_BUFFER *Cert
 )
 {
 	int Length;
 	CHAR8 *CommonName;
 	X509_NAME *SubjectName;
 
-	SubjectName = X509_get_subject_name((X509*)d2i_X509_proper(NULL, Cert.Data, Cert.Size));
+	SubjectName = X509_get_subject_name((X509*)d2i_X509_proper(NULL, Cert->Data, Cert->Size));
 	Length = X509_NAME_get_text_by_NID(SubjectName, NID_commonName, NULL, 0) + 1;
 	if (Length <= 1 || (CommonName = AllocateZeroPool(Length)) == NULL)
 		return NULL;
@@ -712,8 +712,7 @@ exit:
 }
 
 CHAR8* Sha256ToString(
-	CONST UINT8 *Buffer,
-	CONST UINTN Size
+	IN CONST MOSBY_BUFFER *Buffer
 )
 {
 	STATIC CHAR8 HashString[SHA256_DIGEST_LENGTH * 2 + 1];
@@ -721,7 +720,7 @@ CHAR8* Sha256ToString(
 	SHA256_CTX sha256;
 
 	SHA256_Init(&sha256);
-	SHA256_Update(&sha256, Buffer, Size);
+	SHA256_Update(&sha256, Buffer->Data, Buffer->Size);
 	SHA256_Final(Hash, &sha256);
 
 	for (i = 0; i < SHA256_DIGEST_LENGTH; i++)

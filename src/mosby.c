@@ -224,9 +224,9 @@ EFI_STATUS EFIAPI efi_main(
 	UINT16 *SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
-	MOSBY_BUFFER DefaultKey[ARRAY_SIZE(def)] = { 0 }, DefaultCert;
+	MOSBY_BUFFER DefaultKey[ARRAY_SIZE(def)] = { 0 }, DefaultCert, Cert;
 	MOSBY_CRED PkCred = { 0 }, DbCred = { 0 };
-	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL;
+	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL, *CommonName;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH], DefaultKeyName[ARRAY_SIZE(def)][16];
 	MOSBY_LIST List;
 
@@ -247,25 +247,25 @@ EFI_STATUS EFIAPI efi_main(
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
-				Logger(L"Embedded data:\n");
+				Print(L"Embedded data:\n");
 				for (i = 0; i < List.Size; i++) {
 					if (List.Entry[i].Description != NULL) {
-						Logger(L"o %a %a\n        From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
+						Print(L"o %a %a\n        From %a\n", KeyInfo[List.Entry[i].Type].DisplayName,
 							List.Entry[i].Description, List.Entry[i].Url);
-						Logger(L"        %a\n", Sha256ToString(List.Entry[i].Buffer.Data, List.Entry[i].Buffer.Size));
+						Print(L"        %a\n", Sha256ToString(&List.Entry[i].Buffer));
 					}
 				}
 				if (ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat) == EFI_SUCCESS) {
-					Logger(L"\nCurrent system SBAT:\n");
+					Print(L"\nCurrent system SBAT:\n");
 					for (SBatLine = SBat; SBatLine[0] != '\0'; ) {
 						for (i = 0; ; i++) {
 							if (SBatLine[i] == '\n') {
 								SBatLine[i] = '\0';
-								Logger(L"%a\n", SBatLine);
+								Print(L"%a\n", SBatLine);
 								SBatLine = &SBatLine[i + 1];
 								break;
 							} else if (SBatLine[i] == '\0') {
-								Logger(L"%a\n", SBatLine);
+								Print(L"%a\n", SBatLine);
 								SBatLine = &SBatLine[i];
 								break;
 							}
@@ -273,8 +273,39 @@ EFI_STATUS EFIAPI efi_main(
 					}
 					SafeFree(SBat);
 				}
+				Print(L"\nManufacturer Defaults:\n");
+				for (k = PK; k <= DB; k++) {
+					if (k >= ARRAY_SIZE(def))
+						Abort(EFI_NO_MAPPING, L"Internal error\n");
+					UnicodeSPrint(DefaultKeyName[k], sizeof(DefaultKeyName[k]), L"%sDefault", KeyInfo[k].VariableName);
+#if defined(DEFAULTS_FROM_FILE)
+					Status = SimpleFileReadAllByPath(gBaseImageHandle, DefaultKeyName[k], &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
+#else
+					Status = ReadVariable(DefaultKeyName[k], &gEfiGlobalVariableGuid, &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
+#endif
+					if (EFI_ERROR(Status)) {
+						Print(L"WHY %s: %r\n", DefaultKeyName[k], Status);
+						continue;
+					}
+					for (j = 0; CertFromEsl(&DefaultKey[k], j, &DefaultCert) == EFI_SUCCESS; j++) {
+						Cert.Size = DefaultCert.Size - OFFSET_OF(EFI_SIGNATURE_DATA, SignatureData);
+						Cert.Data = ((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureData;
+						CommonName = GetCommonName(&Cert);
+						if (CommonName != NULL) {
+							Print(L"o %a %a\n        From %s\n", KeyInfo[k].DisplayName, CommonName, DefaultKeyName[k]);
+							Print(L"        %a\n", Sha256ToString(&Cert));
+							def[k]++;
+						}
+					}					
+				}
+				if (def[PK] + def[KEK] + def[DB] == 0)
+					Print(L"No defaults certificates were found on this system\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-d") == 0) {
+				if (UpdateMode) {
+					Print(L"The -d and -u options are not compatible\n");
+					goto exit;
+				}
 				CreateNoPkFile = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
@@ -283,6 +314,10 @@ EFI_STATUS EFIAPI efi_main(
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-r") == 0) {
+				if (UpdateMode) {
+					Print(L"The -r and -u options are not compatible\n");
+					goto exit;
+				}
 				AddDefaults = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
@@ -295,6 +330,14 @@ EFI_STATUS EFIAPI efi_main(
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-u") == 0) {
+				if (AddDefaults) {
+					Print(L"The -r and -u options are not compatible\n");
+					goto exit;
+				}
+				if (CreateNoPkFile) {
+					Print(L"The -d and -u options are not compatible\n");
+					goto exit;
+				}
 				UpdateMode = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
@@ -479,10 +522,10 @@ process_binaries:
 			Abort(EFI_NO_MAPPING, L"Internal error\n");
 		/* Read the manufacturer's '###Default' Secure Boot variables if present */
 		UnicodeSPrint(DefaultKeyName[k], sizeof(DefaultKeyName[k]), L"%sDefault", KeyInfo[k].VariableName);
-#if 0
+#if defined(DEFAULTS_FROM_FILE)
 		Status = SimpleFileReadAllByPath(gBaseImageHandle, DefaultKeyName[k], &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
 #else
-		Status = ReadVariable(DefaultKeyName[k], KeyInfo[k].VariableGuid, &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
+		Status = ReadVariable(DefaultKeyName[k], &gEfiGlobalVariableGuid, &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
 #endif
 		if (EFI_ERROR(Status))
 			continue;
@@ -508,14 +551,13 @@ process_binaries:
 				List.Entry[List.Size].Owner = (k == PK) ? &gEfiMosbyGuid : &((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureOwner;
 				List.Entry[List.Size].Buffer.Data = ((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureData;
 				List.Entry[List.Size].Buffer.Size = Size;
-				List.Entry[List.Size].Description = GetCommonName(List.Entry[List.Size].Buffer);
+				List.Entry[List.Size].Description = GetCommonName(&List.Entry[List.Size].Buffer);
 				if (List.Entry[List.Size].Description == NULL)
 					List.Entry[List.Size].Path = DefaultKeyName[k];
 				List.Entry[List.Size].Flags = FROM_DEFAULTS;
 				List.Entry[List.Size].Attrs = (k == PK) ? UEFI_VAR_NV_BS_RT_AT : UEFI_VAR_NV_BS_RT_AT_AP;
 				List.Size++;
 				def[k]++;
-				break;
 			}
 		}
 	}

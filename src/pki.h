@@ -51,13 +51,13 @@ EFI_STATUS CertToAuthVar(
 );
 
 EFI_STATUS CertFromEsl(
-	IN MOSBY_BUFFER* Buffer,
+	IN MOSBY_BUFFER *Buffer,
 	IN UINTN Index,
-	OUT MOSBY_BUFFER* Cert
+	OUT MOSBY_BUFFER *Cert
 );
 
 CHAR8* GetCommonName(
-	IN CONST MOSBY_BUFFER Cert
+	IN CONST MOSBY_BUFFER *Cert
 );
 
 EFI_STATUS CreateEmptyAuthVar(
@@ -78,6 +78,5 @@ EFI_STATUS SignAuthVar(
 );
 
 CHAR8* Sha256ToString(
-	CONST UINT8 *Buffer,
-	CONST UINTN Size
+	IN CONST MOSBY_BUFFER *Buffer
 );
