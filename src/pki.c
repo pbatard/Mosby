@@ -636,6 +636,9 @@ EFI_STATUS SignAuthVar(
 	BIO *bio;
 	PKCS7 *p7;
 
+	if (Credentials->Cert == NULL || Credentials->Key == NULL)
+		return EFI_INVALID_PARAMETER;
+
 	if (Variable->Size < OFFSET_OF_AUTHINFO2_CERT_DATA)
 		ReportErrorAndExit(L"Variable to sign (%d) is too small (%d)\n", Variable->Size, OFFSET_OF_AUTHINFO2_CERT_DATA);
 

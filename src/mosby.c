@@ -489,9 +489,6 @@ EFI_STATUS EFIAPI efi_main(
 		}
 	}
 
-process_binaries:
-	DisplayErrorNotice = TRUE;
-
 	/* Generate the credentials, which we use both to sign the authvars as well as PK */
 	Status = gRT->GetTime(&Time, NULL);
 	if (EFI_ERROR(Status))
@@ -502,6 +499,8 @@ process_binaries:
 	if (EFI_ERROR(Status))
 		ReportErrorAndExit(L"Failed to generate PK signing credentials - Aborting\n");
 
+process_binaries:
+	DisplayErrorNotice = TRUE;
 	/* Process the files that were provided */
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Variable.Data != NULL)
@@ -582,7 +581,7 @@ process_binaries:
 				break;
 			default:
 				Status = PopulateAuthVar(&List.Entry[i], &PkCred);
-				if (EFI_ERROR(Status))
+				if (EFI_ERROR(Status) && !UpdateMode)
 					ReportErrorAndExit(L"Failed to create variable - Aborting\n");
 				break;
 		}
