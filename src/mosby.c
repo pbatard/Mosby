@@ -34,6 +34,10 @@ EFI_HANDLE gBaseImageHandle = NULL;
 
 STATIC BOOLEAN gOptionSilent = FALSE;
 
+/* Substrings we search for to detect compromised PKs, such as "DO NOT TRUST - AMI Test PK",
+   "RD1 BMC Test Key - DO NOT TRUST", "Phoenix PK Example". See https://pk.fail. */
+STATIC CHAR8* CompromisedPk[] = { "DO NOT TRUST", "DO NOT SHIP", "PK Example" };
+
 /* MokList GUID - Not yet defined in EDK2 */
 STATIC EFI_GUID gEfiShimLockGuid =
 	{ 0x605DAB50, 0xE046, 0x4300, { 0xAB, 0xB6, 0x3D, 0xD8, 0x10, 0xDD, 0x8B, 0x23 } };
@@ -220,7 +224,7 @@ EFI_STATUS EFIAPI efi_main(
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
-	UINTN i, j, k, def[3] = { 0 }, Size;
+	UINTN i, j, k, l, def[3] = { 0 }, Size;
 	UINT16 *SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
@@ -551,6 +555,14 @@ process_binaries:
 				List.Entry[List.Size].Buffer.Data = ((EFI_SIGNATURE_DATA*)DefaultCert.Data)->SignatureData;
 				List.Entry[List.Size].Buffer.Size = Size;
 				List.Entry[List.Size].Description = GetCommonName(&List.Entry[List.Size].Buffer);
+				/* Don't re-install a compromised PK! */
+				for (l = 0; l < ARRAY_SIZE(CompromisedPk) &&
+					AsciiStrStr(List.Entry[List.Size].Description, CompromisedPk[l]) == NULL; l++);
+				if (l != ARRAY_SIZE(CompromisedPk)) {
+					RecallPrint(L"Notice: Ignoring compromised default %s '%a'\n", KeyInfo[k].VariableName,
+						List.Entry[List.Size].Description);
+					continue;
+				}
 				if (List.Entry[List.Size].Description == NULL)
 					List.Entry[List.Size].Path = DefaultKeyName[k];
 				List.Entry[List.Size].Flags = FROM_DEFAULTS;
@@ -564,7 +576,7 @@ process_binaries:
 		if (def[PK] + def[KEK] + def[DB] > 0)
 			RecallPrint(L"Reusing %d PK, %d KEK(s) and %d DB(s) from manufacturer's defaults\n", def[PK], def[KEK], def[DB]);
 		else
-			RecallPrint(L"Notice: No additional PK/KEK/DB were found on this platform\n");
+			RecallPrint(L"Notice: No installable default PK/KEK/DB were found on this platform\n");
 	}
 
 	/* Process the finalized list, with all the certs, and generate the AuthVars */
@@ -694,7 +706,7 @@ process_binaries:
 	 * single SetVariable() operation.
 	 * For more on this, see https://github.com/pbatard/Mosby/issues/14.
 	 */
-	EFI_SIGNATURE_LIST* Esl[8] = { 0 };
+	EFI_SIGNATURE_LIST* Esl[16] = { 0 };
 	UINTN EslIndex = 0, EslOffset = 0;
 	UINT8 *MergedEsl = NULL;	 
 	for (i = 0;  i < List.Size; i++) {
