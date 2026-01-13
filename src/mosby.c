@@ -565,7 +565,7 @@ process_binaries:
 				}
 				if (List.Entry[List.Size].Description == NULL)
 					List.Entry[List.Size].Path = DefaultKeyName[k];
-				List.Entry[List.Size].Flags = FROM_DEFAULTS;
+				List.Entry[List.Size].Flags = ALLOCATED_DESCRIPTION;
 				List.Entry[List.Size].Attrs = (k == PK) ? UEFI_VAR_NV_BS_RT_AT : UEFI_VAR_NV_BS_RT_AT_AP;
 				List.Size++;
 				def[k]++;
@@ -655,7 +655,7 @@ process_binaries:
 		Status = GenerateCredentials(DbSubject, &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i].Variable, &gEfiMosbyGuid);
+		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i]);
 		if (EFI_ERROR(Status))
 			goto exit;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &DbCred);
@@ -673,14 +673,14 @@ process_binaries:
 
 	/* Set up the PK if none was specified */
 	LastEntry = RemoveDuplicates(PK, &List);
-	if (LastEntry < 0 || List.Entry[LastEntry].Flags & FROM_DEFAULTS) {
+	if (LastEntry < 0 || List.Entry[LastEntry].Flags & ALLOCATED_DESCRIPTION) {
 		if (List.Size >= MOSBY_MAX_LIST_SIZE)
 			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
 		RecallPrint(L"Generating PK certificate...\n");
 		i = List.Size;
 		List.Entry[i].Type = PK;
 		List.Entry[i].Description = PkSubject;
-		Status = CertToAuthVar(PkCred.Cert, &List.Entry[i].Variable, &gEfiMosbyGuid);
+		Status = CertToAuthVar(PkCred.Cert, &List.Entry[i]);
 		if (EFI_ERROR(Status))
 			goto exit;
 		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT;
@@ -781,7 +781,7 @@ install:
 			if (Type == PK && Status == EFI_SUCCESS)
 				break;
 			if (EFI_ERROR(Status)) {
-				if ((Type == PK) && (List.Entry[i].Flags & FROM_DEFAULTS))
+				if ((Type == PK) && (List.Entry[i].Flags & ALLOCATED_DESCRIPTION))
 					RecallPrint(L"Notice: Manufacturer PK could not be reused (%r)\n", Status);
 				else
 					ReportErrorAndExit(L"Failed to set Secure Boot variable: %r\n", Status);
@@ -841,7 +841,7 @@ exit:
 	for (i = 0; i < List.Size; i++) {
 		if (List.Entry[i].Flags & ALLOCATED_BUFFER)
 			FreePool(List.Entry[i].Buffer.Data);
-		if (List.Entry[i].Flags & FROM_DEFAULTS)
+		if (List.Entry[i].Flags & ALLOCATED_DESCRIPTION)
 			FreePool(List.Entry[i].Description);
 		FreePool(List.Entry[i].Variable.Data);
 	}

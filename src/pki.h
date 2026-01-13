@@ -46,8 +46,7 @@ VOID FreeCredentials(
 
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
-	OUT MOSBY_VARIABLE *Variable,
-	IN CONST EFI_GUID *Owner
+	IN OUT MOSBY_ENTRY *Entry
 );
 
 EFI_STATUS CertFromEsl(

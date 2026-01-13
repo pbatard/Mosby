@@ -357,8 +357,7 @@ VOID FreeCredentials(
 
 EFI_STATUS CertToAuthVar(
 	IN CONST VOID *Cert,
-	OUT MOSBY_VARIABLE *Variable,
-	IN CONST EFI_GUID *Owner
+	IN OUT MOSBY_ENTRY *Entry
 )
 {
 	EFI_STATUS Status = EFI_INVALID_PARAMETER;
@@ -366,10 +365,10 @@ EFI_STATUS CertToAuthVar(
 	EFI_SIGNATURE_DATA *Data = NULL;
 	INTN Size;
 
-	if (Cert == NULL || Variable == NULL)
+	if (Cert == NULL || Entry == NULL)
 		return EFI_INVALID_PARAMETER;
 
-	SetMem(Variable, sizeof(MOSBY_VARIABLE), 0);
+	SetMem(&Entry->Variable, sizeof(MOSBY_VARIABLE), 0);
 
 	Size = (INTN)i2d_X509_proper((X509*)Cert, NULL);
 	if (Size <= 0)
@@ -385,13 +384,20 @@ EFI_STATUS CertToAuthVar(
 	Data = (EFI_SIGNATURE_DATA*)&Esl[1];
 	i2d_X509_proper((X509*)Cert, &Data->SignatureData[0]);
 
-	// If no explicit owner was specified, we add ourselves as the owner of naked certs
-	CopyGuid(&Data->SignatureOwner, (Owner == NULL) ? &gEfiMosbyGuid : Owner);
+	// Populate the Description from the Common Name
+	if (Entry->Description == NULL) {
+		MOSBY_BUFFER Buffer = { Size,  &Data->SignatureData[0]};
+		Entry->Description = GetCommonName(&Buffer);
+		Entry->Flags |= ALLOCATED_DESCRIPTION;
+	}
 
-	Variable->Size = Esl->SignatureListSize;
-	Variable->Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
+	// If no explicit owner was specified, we add ourselves as the owner of naked certs
+	CopyGuid(&Data->SignatureOwner, (Entry->Owner == NULL) ? &gEfiMosbyGuid : Entry->Owner);
+
+	Entry->Variable.Size = Esl->SignatureListSize;
+	Entry->Variable.Data = (EFI_VARIABLE_AUTHENTICATION_2*)Esl;
 	// NB: CreateTimeBasedPayload() frees the input buffer before replacing it
-	Status = CreateTimeBasedPayload(&Variable->Size, (UINT8**)&Variable->Data, &mTime);
+	Status = CreateTimeBasedPayload(&Entry->Variable.Size, (UINT8**)&Entry->Variable.Data, &mTime);
 	if (EFI_ERROR(Status)) {
 		FreePool(Esl);
 		ReportErrorAndExit(L"Failed to create time-based data payload: %r\n", Status);
@@ -399,8 +405,8 @@ EFI_STATUS CertToAuthVar(
 
 exit:
 	if (EFI_ERROR(Status)) {
-		Variable->Size = 0;
-		SafeFree(Variable->Data);
+		Entry->Variable.Size = 0;
+		SafeFree(Entry->Variable.Data);
 	}
 	return Status;
 }
@@ -548,7 +554,7 @@ EFI_STATUS PopulateAuthVar(
 	}
 
 	// Check for a DER encoded X509 certificate
-	Status = CertToAuthVar(d2i_X509_proper(NULL, Entry->Buffer.Data, Entry->Buffer.Size), &Entry->Variable, Entry->Owner);
+	Status = CertToAuthVar(d2i_X509_proper(NULL, Entry->Buffer.Data, Entry->Buffer.Size), Entry);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 
@@ -556,7 +562,7 @@ EFI_STATUS PopulateAuthVar(
 	bio = BIO_new_mem_buf(Entry->Buffer.Data, Entry->Buffer.Size);
 	if (bio == NULL)
 		ReportErrorAndExit(L"Failed to create X509 buffer\n");
-	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), &Entry->Variable, Entry->Owner);
+	Status = CertToAuthVar(PEM_read_bio_X509(bio, NULL, NULL, NULL), Entry);
 	if (Status == EFI_SUCCESS)
 		goto exit;
 	BIO_free(bio);	// Can't reuse the bio
@@ -568,7 +574,7 @@ EFI_STATUS PopulateAuthVar(
 	p12 = d2i_PKCS12_bio(bio, NULL);
 	// Need to read both the key and cert, even if we don't use the key here
 	if (PKCS12_parse(p12, NULL, (EVP_PKEY**)&Cred.Key, (X509**)&Cred.Cert, NULL)) {
-		Status = CertToAuthVar(Cred.Cert, &Entry->Variable, Entry->Owner);
+		Status = CertToAuthVar(Cred.Cert, Entry);
 		PKCS12_free(p12);
 		FreeCredentials(&Cred);
 		if (Status == EFI_SUCCESS)
