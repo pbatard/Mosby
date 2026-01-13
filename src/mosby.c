@@ -232,6 +232,7 @@ EFI_STATUS EFIAPI efi_main(
 	MOSBY_CRED PkCred = { 0 }, DbCred = { 0 };
 	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL, *CommonName;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH], DefaultKeyName[ARRAY_SIZE(def)][16];
+	CHAR16 KekDescription[16][120] = { 0 };
 	MOSBY_LIST List;
 
 	gBaseImageHandle = BaseImageHandle;
@@ -300,7 +301,7 @@ EFI_STATUS EFIAPI efi_main(
 							Print(L"        %a\n", Sha256ToString(&Cert));
 							def[k]++;
 						}
-					}					
+					}
 				}
 				if (def[PK] + def[KEK] + def[DB] == 0)
 					Print(L"No defaults certificates were found on this system\n");
@@ -707,8 +708,8 @@ process_binaries:
 	 * For more on this, see https://github.com/pbatard/Mosby/issues/14.
 	 */
 	EFI_SIGNATURE_LIST* Esl[16] = { 0 };
-	UINTN EslIndex = 0, EslOffset = 0;
-	UINT8 *MergedEsl = NULL;	 
+	UINTN EslIndex = 0, EslOffset = 0, Line = 0;
+	UINT8 *MergedEsl = NULL;
 	for (i = 0;  i < List.Size; i++) {
 		/* Only process valid KEK entries for which we have a variable */
 		if (List.Entry[i].Type != KEK || List.Entry[i].Variable.Data == NULL)
@@ -719,9 +720,11 @@ process_binaries:
 		if (EslIndex >= ARRAY_SIZE(Esl))
 			Abort(EFI_INVALID_PARAMETER, L"More than %d KEKs to merge - Aborting\n", ARRAY_SIZE(Esl));
 		if (List.Entry[i].Description != NULL)
-			RecallPrint(L"Adding '%a' to Merged KEK List\n", List.Entry[i].Description);
+			UnicodeSPrint(KekDescription[Line++], 120 * sizeof(CHAR16),
+				L"Installing %a '%a'\n", KeyInfo[KEK].DisplayName, List.Entry[i].Description);
 		else
-			RecallPrint(L"Adding '%s' to Merged KEK List\n", List.Entry[i].Path);
+			UnicodeSPrint(KekDescription[Line++], 120 * sizeof(CHAR16),
+				L"Installing %a From '%s'\n", KeyInfo[KEK].DisplayName, List.Entry[i].Path);
 		/* Get the ESL data from EFI_VARIABLE_AUTHENTICATION_2 (at .AuthInfo.CertData) */
 		Esl[EslIndex++] = (EFI_SIGNATURE_LIST*)&((UINT8*)List.Entry[i].Variable.Data)[
 			((List.Entry[i].Variable.Data->AuthInfo.CertData[2] << 8) | List.Entry[i].Variable.Data->AuthInfo.CertData[3]) +
@@ -770,7 +773,10 @@ install:
 				continue;
 			if (UpdateMode && !(List.Entry[i].Flags & ALLOW_UPDATE))
 				continue;
-			if (List.Entry[i].Description != NULL)
+			if (Type == KEK && KekDescription[0][0] != L'\0')
+				for (j = 0; KekDescription[j][0] != L'\0'; j++)
+					RecallPrint(KekDescription[j]);
+			else if (List.Entry[i].Description != NULL)
 				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
 				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);

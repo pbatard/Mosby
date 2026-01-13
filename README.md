@@ -160,7 +160,7 @@ build -a X64 -b RELEASE -t GCC5 -p MosbyPkg.dsc
 Note that, if you have `bash` with `curl`, `OpenSSL` and `sed` installed, you can recreate
 `data.c` by running the following command in the `src/` directory:
 ```
-./gen_data.sh > data.c
+./gen_data.sh
 ```
 
 ## Mini FAQ
