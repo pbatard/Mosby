@@ -25,10 +25,6 @@
 #include "variables.h"
 #include "version.h"
 
-/* Convert a Windows version to an integer */
-#define WINVER_TO_UINT64(ver) (((UINT64)(ver)[0] << 48) | ((UINT64)(ver)[1] << 32) | \
-                               ((UINT64)(ver)[2] << 16) | ((UINT64)(ver)[3]))
-
 /* Globals */
 EFI_HANDLE gBaseImageHandle = NULL;
 
@@ -89,18 +85,6 @@ MOSBY_KEY_INFO KeyInfo[MAX_TYPES] = {
 		.OptionName   = L"-sbat",
 		.VariableName = L"SbatLevel",
 		.VariableGuid = &gEfiShimLockGuid,
-	},
-	[SSPU] = {
-		.DisplayName  = "SSPU:",
-		.OptionName   = L"-sspu",
-		.VariableName = L"SkuSiPolicyUpdateSigners",
-		.VariableGuid = &gEfiMicrosoftGuid,
-	},
-	[SSPV] = {
-		.DisplayName  = "SSPV:",
-		.OptionName   = L"-sspv",
-		.VariableName = L"SkuSiPolicyVersion",
-		.VariableGuid = &gEfiMicrosoftGuid,
 	}
 };
 
@@ -158,11 +142,10 @@ STATIC INTN RemoveDuplicates(
 	MOSBY_LIST *List
 )
 {
-	INTN i, LastEntry;
+	INTN i, LastEntry = -1;
 
-	LastEntry = -1;
 	for (i = 0; i < List->Size; i++) {
-		if (List->Entry[i].Type != Type)
+		if (List->Entry[i].Type != Type || List->Entry[i].Flags & NO_INSTALL)
 			continue;
 		if (LastEntry >= 0)
 			List->Entry[LastEntry].Flags |= NO_INSTALL;
@@ -225,7 +208,6 @@ EFI_STATUS EFIAPI efi_main(
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
 	UINTN i, j, k, l, def[3] = { 0 }, Size;
-	UINT16 *SystemSSPV = NULL;
 	UINT32 SystemSBatVer = 0, InstallSBatVer = 0;
 	INTN Argc, Type, Sel, LastEntry;
 	MOSBY_BUFFER DefaultKey[ARRAY_SIZE(def)] = { 0 }, DefaultCert, Cert;
@@ -249,7 +231,7 @@ EFI_STATUS EFIAPI efi_main(
 		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
 				Print(L"Usage: Mosby [-h] [-d] [-i] [-n] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
-				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat, sspu, sspv\n");
+				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
 				Print(L"Embedded data:\n");
@@ -583,12 +565,7 @@ process_binaries:
 	/* Process the finalized list, with all the certs, and generate the AuthVars */
 	for (i = 0; i < List.Size; i++) {
 		switch (List.Entry[i].Type) {
-			case SSPV:
-				if (List.Entry[i].Buffer.Size != 4 * sizeof(UINT16))
-					Abort(EFI_INVALID_PARAMETER, L"Invalid SSPV size\n");
-				// Fall through
 			case SBAT:
-			case SSPU:
 				List.Entry[i].Flags = USE_BUFFER | ALLOW_UPDATE;
 				List.Entry[i].Attrs = UEFI_VAR_NV_BS;
 				break;
@@ -609,36 +586,16 @@ process_binaries:
 	if (InstallSBatVer == 0)
 		Abort(EFI_NO_MAPPING, L"Internal error\n");
 	Status = ReadVariable(L"SbatLevel", &gEfiShimLockGuid, &Size, (VOID**)&SBat);
-	if (Status == EFI_SUCCESS)
+	if (Status == EFI_SUCCESS) {
 		SystemSBatVer = GetSBatVersion(SBat, Size);
-	if (TestMode)
-		Print(L"Provided SBAT: %d, System SBAT: %d\n", InstallSBatVer, SystemSBatVer);
+		RecallPrint(L"System SBAT is %d, Embedded SBAT is %d\n", SystemSBatVer, InstallSBatVer);
+	} else
+		RecallPrint(L"No SBAT variable was detected on this system\n");
 	if (InstallSBatVer <= SystemSBatVer) {
-		// TODO: Allow override
 		RecallPrint(L"Not installing SBAT since this system's SBAT is either the same or newer\n");
 		List.Entry[LastEntry].Flags |= NO_INSTALL;
 	}
 	SafeFree(SBat);
-
-	/* Find out if we need to update the SSP's */
-	LastEntry = RemoveDuplicates(SSPU, &List);
-	if (LastEntry < 0)
-		Abort(EFI_NO_MAPPING, L"Internal error\n");
-	LastEntry = RemoveDuplicates(SSPV, &List);
-	if (LastEntry < 0)
-		Abort(EFI_NO_MAPPING, L"Internal error\n");
-	Size = 4 * sizeof(UINT16);
-	Status = ReadVariable(L"SkuSiPolicyVersion", &gEfiMicrosoftGuid, &Size, (VOID**)&SystemSSPV);
-	if (Status == EFI_SUCCESS && Size != 4 * sizeof(UINT16))
-		Abort(EFI_UNSUPPORTED, L"Unexpected SSPV variable size\n");
-	if (Status == EFI_SUCCESS &&
-		WINVER_TO_UINT64(SystemSSPV) >= (WINVER_TO_UINT64((UINT16*)List.Entry[LastEntry].Buffer.Data))) {
-		// TODO: Allow override
-		RecallPrint(L"Not installing SSP vars since this system's SSPV is either the same or newer\n");
-		List.Entry[LastEntry].Flags |= NO_INSTALL;
-		List.Entry[RemoveDuplicates(SSPU, &List)].Flags |= NO_INSTALL;
-	}
-	FreePool(SystemSSPV);
 
 	if (UpdateMode)
 		goto install;

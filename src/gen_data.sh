@@ -1,25 +1,6 @@
 #!/bin/env bash
 # This script generates the C source for the data we embed in Mosby.
 
-github_url="https://github.com/"
-
-# Retrieve the commit date from a GitHub URL
-get_commit_date() {
-  url=$1
-  if [[ "${url}" =~ ^"${github_url}" ]]; then
-    project=${url/#${github_url}}
-    project=$(echo ${project} | cut -f1,2 -d'/')
-    date_url="${url#*main/}"
-    date_url="${date_url//\//%2F}"
-    date_url="https://api.github.com/repos/${project}/commits?path=${date_url}&page=1&per_page=1"
-    commit_date="$(curl -s -L ${date_url} | python -m json.tool | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
-    commit_date=${commit_date//-/.}
-    echo $commit_date
-  else
-    echo NO_DATE
-  fi
-}
-
 # The binaries we want to embedd and their URLs.
 declare -A source; declare -a order;
 source['kek_2011_ms.cer']='https://go.microsoft.com/fwlink/?LinkId=321185'; order+=('kek_2011_ms.cer');
@@ -52,8 +33,6 @@ source['dbx_update_svn_arm.bin']='https://github.com/microsoft/secureboot_object
 # Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
 # See: https://github.com/rhboot/shim/issues/685
 source['sbat_level.txt']='https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt'; order+=('sbat_level.txt');
-# Microsoft SSP variables... provided by Red Hat, since Microsoft doesn't make these public yet.
-source['ssp_var_defs.h']='https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h'; order+=('ssp_var_defs.h');
 
 declare -A exclusive_set=(
   ['db_2011_win_ms.cer']='MOSBY_SET1'
@@ -97,11 +76,6 @@ declare -A archguard=(
   ['riscv64']='#if defined(_M_RISCV64) || (defined (__riscv) && (__riscv_xlen == 64))'
 )
 
-declare -A ssp_varname=(
-  ['SSPU']='SkuSiPolicyUpdateSigners'
-  ['SSPV']='SkuSiPolicyVersion'
-)
-
 # Using { ... } > some_file allows us to redirect everything between { and }
 {
 cat << EOF
@@ -126,17 +100,8 @@ cat << EOF
 
 #include <stdint.h>
 #include "mosby.h"
-#include "ssp_var_defs.h"
 
 EOF
-
-# Get the SSP date from the last GitHub commit of ssp_var_defs.h
-ssp_date_url="${source[ssp_var_defs.h]}"
-ssp_date_url="${ssp_date_url#*main/}"
-ssp_date_url="${ssp_date_url//\//%2F}"
-ssp_date_url="https://api.github.com/repos/rhboot/shim/commits?path=${ssp_date_url}&page=1&per_page=1"
-ssp_date="$(curl -s -L ${ssp_date_url} | grep -m1 -Eo '[0-9]+\-[0-9]+\-[0-9]+')"
-ssp_date=${ssp_date//-/.}
 
 for file in "${order[@]}"; do
   # '-o' will try to use an override from the current repo
@@ -144,9 +109,6 @@ for file in "${order[@]}"; do
     cp ../data/${file} .
   else
     curl -f -s -L ${source[${file}]} -o ${file} || { echo "Failed to retreive ${source[${file}]}"; exit 1; }
-  fi
-  if [[ "${file}" = "ssp_var_defs.h" ]]; then
-    continue
   fi
   echo "// From ${source[${file}]}"
   if [[ "${description[${file}]}" == "" ]]; then
@@ -171,12 +133,6 @@ for file in "${order[@]}"; do
   rm ${file}
 done
 
-# Break down ssp_var_defs.h into 2 distinct SSPU and SSPV entries
-unset order[-1]
-source['sspu_var_defs.h']=${source['ssp_var_defs.h']}; order+=('sspu_var_defs.h');
-source['sspv_var_defs.h']=${source['ssp_var_defs.h']}; order+=('sspv_var_defs.h');
-unset source[ssp_var_defs.h]
-
 echo "EFI_STATUS InitializeList("
 echo "	IN OUT MOSBY_LIST *List"
 echo ")"
@@ -193,11 +149,9 @@ for file in "${order[@]}"; do
   url=${source[${file}]}
   if [[ "$type" == "DBX" && "$arch" != "all" ]]; then
     echo "${archguard[$arch]}"
-  elif [[ "$type" == "SSP" ]]; then
-    type="SSPU"
   fi
   echo "	List->Entry[List->Size].Type = ${type};"
-  if [[ "$type" == "SBAT" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
+  if [[ "$type" == "SBAT" ]]; then
     echo "	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;"
   elif [[ "$type" == "DBX" ]]; then
     echo "	List->Entry[List->Size].Flags = ALLOW_UPDATE;"
@@ -207,7 +161,7 @@ for file in "${order[@]}"; do
   if [[ "${exclusive_set[${file}]}" != "" ]]; then
     echo "	List->Entry[List->Size].Set = ${exclusive_set[${file}]};"
   fi
-  if [[ "$type" == "SBAT" || "$type" == "MOK" || "$type" == "SSPU" || "$type" == "SSPV" ]]; then
+  if [[ "$type" == "SBAT" || "$type" == "MOK" ]]; then
     echo "	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;"
   else
     # The whole "append" business of the UEFI spec's SetVariable() is bullshit.
@@ -223,15 +177,9 @@ for file in "${order[@]}"; do
   fi
   echo "	List->Entry[List->Size].Path = L\"${file}\";"
   echo "	List->Entry[List->Size].Url = \"${url}\";"
-  if [[ "$type" == "SSPU" || "$type" == "SSPV" ]]; then
-    echo "	List->Entry[List->Size].Description = \"${ssp_varname[${type}]} [$(get_commit_date ${url})]\";"
-    echo "	List->Entry[List->Size].Buffer.Data = ${ssp_varname[${type}]};"
-    echo "	List->Entry[List->Size].Buffer.Size = sizeof(${ssp_varname[${type}]});"
-  else
-    echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
-    echo "	List->Entry[List->Size].Buffer.Data = ${data};"
-    echo "	List->Entry[List->Size].Buffer.Size = ${data}_len;"
-  fi
+  echo "	List->Entry[List->Size].Description = \"${description[${file}]}\";"
+  echo "	List->Entry[List->Size].Buffer.Data = ${data};"
+  echo "	List->Entry[List->Size].Buffer.Size = ${data}_len;"
   echo "	List->Size++;"
   if [[ "$type" == "DBX" && "$arch" != "all" ]]; then
     echo "#endif"

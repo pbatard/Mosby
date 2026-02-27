@@ -120,15 +120,15 @@ variable to the data you want to install for it.
 * `-n`: No file logging (disables appending the screen ouput to `Mosby.log`).
 * `-r`: Try to reinstall the manufacturer's default PK/KEK/DB certs, if available.
 * `-s`: Silent option (Removes some of the early and late prompts).
-* `-u`: Update only: Only update the revocation databases, SBAT, and SSPV/SSPU as needed.
+* `-u`: Update only: Only update the revocation databases and SBAT as needed.
 * `-t`: Test mode. Disables some checks and enables the internal **low security** Random
         Number Generator, if no other Random Number Generator can be found.
 * `-x`: Install the Microsoft update that invalidates `Microsoft Windows Production PCA 2011`.
         You should only use this if you know what you are doing, as you you may not be able
         to boot or reinstall Windows otherwise. **You have been warned!**
 
-You can also point to files using the `-pk`, `-kek`, `-db`, `-dbx`, `-mok`, `-dbt`, `-sbat`,
-`-sspv` and `-sspu` parameters.
+You can also point to files using the `-pk`, `-kek`, `-db`, `-dbx`, `-mok`, `-dbt` and `-sbat`
+parameters.
 
 ## Compilation
 
@@ -225,8 +225,8 @@ other hand, we want to make it easy for people to be able to sign their UEFI boo
 they need it, because vetting bootloaders for Secure Boot should not be a daunting prospect.
 
 At any rate, if you do want a Secure Boot signing key that is protected by a password, you
-can easily generated one with OpenSSL, and then point to its matching certificate when
-running `Mosby`.
+can easily generate one with OpenSSL, and then point to its matching certificate when running
+`Mosby`.
 
 ### How can I trust that Mosby is not doing something malicious behind the scenes?
 

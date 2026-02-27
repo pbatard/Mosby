@@ -19,7 +19,6 @@
 
 #include <stdint.h>
 #include "mosby.h"
-#include "ssp_var_defs.h"
 
 // From https://go.microsoft.com/fwlink/?LinkId=321185
 unsigned char kek_2011_ms_cer[] = {
@@ -7422,7 +7421,7 @@ EFI_STATUS InitializeList(
 	IN OUT MOSBY_LIST *List
 )
 {
-	if (MOSBY_MAX_LIST_SIZE < 22)
+	if (MOSBY_MAX_LIST_SIZE < 20)
 		return EFI_INVALID_PARAMETER;
 	ZeroMem(List, sizeof(MOSBY_LIST));
 	List->Entry[List->Size].Type = KEK;
@@ -7633,24 +7632,6 @@ EFI_STATUS InitializeList(
 	List->Entry[List->Size].Description = "SbatLevel.txt [2025.05.10]";
 	List->Entry[List->Size].Buffer.Data = sbat_level_txt;
 	List->Entry[List->Size].Buffer.Size = sbat_level_txt_len;
-	List->Size++;
-	List->Entry[List->Size].Type = SSPU;
-	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;
-	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
-	List->Entry[List->Size].Path = L"sspu_var_defs.h";
-	List->Entry[List->Size].Url = "https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h";
-	List->Entry[List->Size].Description = "SkuSiPolicyUpdateSigners [2023.04.29]";
-	List->Entry[List->Size].Buffer.Data = SkuSiPolicyUpdateSigners;
-	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyUpdateSigners);
-	List->Size++;
-	List->Entry[List->Size].Type = SSPV;
-	List->Entry[List->Size].Flags = USE_BUFFER | ALLOW_UPDATE;
-	List->Entry[List->Size].Attrs = UEFI_VAR_NV_BS;
-	List->Entry[List->Size].Path = L"sspv_var_defs.h";
-	List->Entry[List->Size].Url = "https://github.com/rhboot/shim/raw/main/include/ssp_var_defs.h";
-	List->Entry[List->Size].Description = "SkuSiPolicyVersion [2023.04.29]";
-	List->Entry[List->Size].Buffer.Data = SkuSiPolicyVersion;
-	List->Entry[List->Size].Buffer.Size = sizeof(SkuSiPolicyVersion);
 	List->Size++;
 	return EFI_SUCCESS;
 }
