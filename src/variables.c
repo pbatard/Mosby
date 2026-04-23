@@ -93,7 +93,7 @@ STATIC CONST CHAR16 *AttemptMessage4[] = {
 	L"",
 	L"We would therefore encourage you to reach out  to  your  hardware",
 	L"manufacturer, and let them know about the  difficulties  you  are",
-	L"encountering when trying to enable 'Setup Mode'...               ", 
+	L"encountering when trying to enable 'Setup Mode'...               ",
 	L"",
 	L"Do you still want to reboot and try again?",
 	NULL
@@ -103,7 +103,7 @@ STATIC CONST CHAR16 *ExitMessage1[] = {
 	L"Mosby has sucessfully installed the Secure Boot variables.       ",
 	L"",
 	L"You should now reboot into your UEFI firmware settings  and  make",
-	L"sure that Secure Boot is enabled.                                ", 
+	L"sure that Secure Boot is enabled.                                ",
 	L"",
 	L"IMPORTANT: Please make sure that you keep a copy of the following",
 	L"generated files: 'MosbyKey.pfx', 'MosbyKey.crt',  'MosbyKey.pem'.",
@@ -190,7 +190,7 @@ EFI_STATUS CheckSetupMode(VOID)
 	Size = sizeof(SetupMode);
 	Status = gRT->GetVariable(EFI_SETUP_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &Size, &SetupMode);
 
-	if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE || AuditMode != 0) {
+	if (EFI_ERROR(Status) || SecureBoot == SECURE_BOOT_MODE_ENABLE || SetupMode != SETUP_MODE) {
 		RecallPrint(L"ERROR: Setup Mode not enabled (Attempt #%d)\n", SetupModeAttempts + 1);
 		// Unfortunately, while EDK2 makes DeletePlatformKey() publicly available, which
 		// should allow us to toggle Setup Mode, most modern platforms prevent the call
@@ -222,7 +222,7 @@ EFI_STATUS CheckSetupMode(VOID)
 			DisablePKProtection();
 			if (DeletePlatformKey() == EFI_SUCCESS) {
 				RecallPrint(L"NOTICE: PK deletion successful! Platform should now be in Setup Mode.\n");
-			} else if (IsOsIndicationsSupported(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) && 
+			} else if (IsOsIndicationsSupported(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) &&
 				SetOsIndication(EFI_OS_INDICATIONS_BOOT_TO_FW_UI) == EFI_SUCCESS) {
 				// Log one more attempt by the user to try to enable Setup mode
 				SetupModeAttempts++;
@@ -238,7 +238,9 @@ EFI_STATUS CheckSetupMode(VOID)
 			Status = EFI_ABORTED;
 		}
 	}
-	
+	if (AuditMode != 0)
+		RecallPrint(L"WARNING: Platform is in Audit Mode. Installation of Secure Boot keys may fail.\n");
+
 exit:
 	return Status;
 }
