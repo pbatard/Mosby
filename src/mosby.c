@@ -202,7 +202,7 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	BOOLEAN TestMode = FALSE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
+	BOOLEAN TestMode = FALSE, AddDBCred = TRUE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
 	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE, AddDefaults = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
@@ -230,7 +230,8 @@ EFI_STATUS EFIAPI efi_main(
 		ArgvCopy = Argv;
 		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
-				Print(L"Usage: Mosby [-h] [-d] [-i] [-n] [-s] [-u] [-v] [-x] [-var <file>] [-var <file>] [...]\n");
+				Print(L"Usage: Mosby [-h][-i][-r][-s][-t][-u][-v][-x][-var <file>][-var <file>][...]\n");
+				Print(L"       Additional options: [--create-nopk][--no-log][--no-mosby-db]\n");
 				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
@@ -288,21 +289,33 @@ EFI_STATUS EFIAPI efi_main(
 				if (def[PK] + def[KEK] + def[DB] == 0)
 					Print(L"No defaults certificates were found on this system\n");
 				goto exit;
-			} else if (StrCmp(ArgvCopy[1], L"-d") == 0) {
+			} else if (StrCmp(ArgvCopy[1], L"--create-nopk") == 0) {
 				if (UpdateMode) {
-					Print(L"The -d and -u options are not compatible\n");
+					Print(L"The --create-nopk option is not compatible with -u\n");
+					goto exit;
+				}
+				if (AddDefaults) {
+					Print(L"The --create-nopk option is not compatible with -r\n");
 					goto exit;
 				}
 				CreateNoPkFile = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
-			} else if (StrCmp(ArgvCopy[1], L"-n") == 0) {
+			} else if (StrCmp(ArgvCopy[1], L"--no-log") == 0) {
 				LogToFile = FALSE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"--no-mosby-db") == 0) {
+				AddDBCred = FALSE;
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-r") == 0) {
 				if (UpdateMode) {
 					Print(L"The -r and -u options are not compatible\n");
+					goto exit;
+				}
+				if (CreateNoPkFile) {
+					Print(L"The --create-nopk option is not compatible with -r\n");
 					goto exit;
 				}
 				AddDefaults = TRUE;
@@ -322,7 +335,7 @@ EFI_STATUS EFIAPI efi_main(
 					goto exit;
 				}
 				if (CreateNoPkFile) {
-					Print(L"The -d and -u options are not compatible\n");
+					Print(L"The --create-nopk option is not compatible with -u\n");
 					goto exit;
 				}
 				UpdateMode = TRUE;
@@ -425,54 +438,56 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* If we have an existing cert for a previously generated DB credential, try to reuse it */
-	UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%a.crt", MOSBY_CRED_NAME);
-	if (SimpleFileExistsByPath(gBaseImageHandle, MosbyKeyPath)) {
-		if (List.Size >= MOSBY_MAX_LIST_SIZE)
-			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
-		RecallPrint(L"Reusing existing %s certificate...\n", MosbyKeyPath);
-		List.Entry[List.Size].Type = DB;
-		List.Entry[List.Size].Path = MosbyKeyPath;
-		List.Size++;
-	} else {
-		Sel = ConsoleSelect(
-			(CONST CHAR16 *[]){
-				L"DB credentials installation",
-				L"",
-				L"Do you want to SELECT an existing Secure Boot signing certificate",
-				L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
-				L"an additional certificate for your own usage)?                   ",
-				L"",
-				L"If you don't know what  to  do,  we  recommend  to  GENERATE  new",
-				L"signing credentials, so that you can sign  your  own  Secure Boot",
-				L"binaries for this system.                                        ",
-				NULL
-			},
-			(CONST CHAR16 *[]){
-				L"SELECT",
-				L"GENERATE",
-				L"DON'T INSTALL",
-				NULL
-			}, 1);
-		RecallPrintRestore();
-		if (Sel == 0) {
-			CHAR16 Title[80];
-			EFI_HANDLE Handle = NULL;
-			UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select an existing certificate");
-			Status = SimpleFileSelector(&Handle,
+	if (AddDBCred) {
+		UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%a.crt", MOSBY_CRED_NAME);
+		if (SimpleFileExistsByPath(gBaseImageHandle, MosbyKeyPath)) {
+			if (List.Size >= MOSBY_MAX_LIST_SIZE)
+				Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
+			RecallPrint(L"Reusing existing %s certificate...\n", MosbyKeyPath);
+			List.Entry[List.Size].Type = DB;
+			List.Entry[List.Size].Path = MosbyKeyPath;
+			List.Size++;
+		} else {
+			Sel = ConsoleSelect(
 				(CONST CHAR16 *[]){
+					L"DB credentials installation",
 					L"",
-					Title,
+					L"Do you want to SELECT an existing Secure Boot signing certificate",
+					L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
+					L"an additional certificate for your own usage)?                   ",
+					L"",
+					L"If you don't know what  to  do,  we  recommend  to  GENERATE  new",
+					L"signing credentials, so that you can sign  your  own  Secure Boot",
+					L"binaries for this system.                                        ",
 					NULL
-				}, L"\\", L".cer|.crt|.pfx", &List.Entry[List.Size].Path);
+				},
+				(CONST CHAR16 *[]){
+					L"SELECT",
+					L"GENERATE",
+					L"DON'T INSTALL",
+					NULL
+				}, 1);
 			RecallPrintRestore();
-			if (EFI_ERROR(Status) || !SimpleFileExistsByPath(gBaseImageHandle, List.Entry[List.Size].Path)) {
-				SafeFree(List.Entry[List.Size].Path);
-				RecallPrint(L"Invalid selection -- Will generate new signing credentials\n");
+			if (Sel == 0) {
+				CHAR16 Title[80];
+				EFI_HANDLE Handle = NULL;
+				UnicodeSPrint(Title, ARRAY_SIZE(Title), L"Please select an existing certificate");
+				Status = SimpleFileSelector(&Handle,
+					(CONST CHAR16 *[]){
+						L"",
+						Title,
+						NULL
+					}, L"\\", L".cer|.crt|.pfx", &List.Entry[List.Size].Path);
+				RecallPrintRestore();
+				if (EFI_ERROR(Status) || !SimpleFileExistsByPath(gBaseImageHandle, List.Entry[List.Size].Path)) {
+					SafeFree(List.Entry[List.Size].Path);
+					RecallPrint(L"Invalid selection -- Will generate new signing credentials\n");
+					GenDBCred = TRUE;
+				}
+				List.Size++;
+			} else if (Sel == 1) {
 				GenDBCred = TRUE;
 			}
-			List.Size++;
-		} else if (Sel == 1) {
-			GenDBCred = TRUE;
 		}
 	}
 

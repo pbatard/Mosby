@@ -112,23 +112,29 @@ variable to the data you want to install for it.
 
 ## Parameters
 
+#### Main parameters
+
 * `-h`: Display the application parameters and exit.
-* `-v`: Display the application version and exit.
-* `-d`: Create a `NoPK.auth` PK deletion package (that can be used with KeyTool).
 * `-i`: Display information about the embedded data installable by the application, as well
         as the current SBAT data from the system (if SBAT is set) and manufacturer defaults.
-* `-n`: No file logging (disables appending the screen ouput to `Mosby.log`).
 * `-r`: Try to reinstall the manufacturer's default PK/KEK/DB certs, if available.
 * `-s`: Silent option (Removes some of the early and late prompts).
-* `-u`: Update only: Only update the revocation databases and SBAT as needed.
 * `-t`: Test mode. Disables some checks and enables the internal **low security** Random
         Number Generator, if no other Random Number Generator can be found.
+* `-u`: Update only: Only update the revocation databases and SBAT as needed.
+* `-v`: Display the application version and exit.
 * `-x`: Install the Microsoft update that invalidates `Microsoft Windows Production PCA 2011`.
         You should only use this if you know what you are doing, as you you may not be able
         to boot or reinstall Windows otherwise. **You have been warned!**
 
 You can also point to files using the `-pk`, `-kek`, `-db`, `-dbx`, `-mok`, `-dbt` and `-sbat`
 parameters.
+
+#### Additional parameters
+
+* `--create-nopk`: Create a `NoPK.auth` PK deletion package (that can be used with KeyTool).
+* `--no-log`:      Disable file logging (Output will not be logged into `Mosby.log`).
+* `--no-mosby-db`: Don't install the MosbyKey DB credentials for bootloader signing.
 
 ## Compilation
 

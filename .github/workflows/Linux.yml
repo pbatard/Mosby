@@ -51,7 +51,7 @@ jobs:
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         submodules: recursive
         fetch-depth: 0
@@ -94,7 +94,7 @@ jobs:
         mv Build/${{ env.BUILD_TYPE }}_${{ env.COMPILER }}/${{ matrix.TARGET_ARCH }}/Mosby.efi Mosby_${{ matrix.TARGET_TYPE }}.efi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.TARGET_TYPE }}
         path: ./*.efi
@@ -110,7 +110,7 @@ jobs:
     needs: build
     steps:
     - name: Check out repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -119,13 +119,13 @@ jobs:
       run: echo "version=$(git describe --tags)" >> $GITHUB_OUTPUT
 
     - name: Download artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v7
 
     - name: Create release archive
       run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./Mosby.nsh ./*/*.efi
 
     - name: Create release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         token: ${{secrets.GITHUB_TOKEN}}
         name: Mosby ${{ steps.set_version.outputs.version }}
