@@ -128,8 +128,7 @@ STATIC CONST CHAR16 *ExitMessage2[] = {
 	NULL
 };
 
-STATIC BOOLEAN
-IsOsIndicationsSupported(
+BOOLEAN IsOsIndicationsSupported(
 	IN CONST UINT64 Indication
 )
 {
@@ -144,7 +143,7 @@ IsOsIndicationsSupported(
 	return OsIndicationsSupported & Indication;
 }
 
-STATIC EFI_STATUS SetOsIndication(
+EFI_STATUS SetOsIndication(
 	IN CONST UINT64 Indication
 )
 {

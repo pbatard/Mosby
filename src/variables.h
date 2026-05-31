@@ -18,6 +18,14 @@
 
 EFI_STATUS CheckSetupMode(VOID);
 
+BOOLEAN IsOsIndicationsSupported(
+	IN CONST UINT64 Indication
+);
+
+EFI_STATUS SetOsIndication(
+	IN CONST UINT64 Indication
+);
+
 BOOLEAN ExitNotice(
 	IN CONST BOOLEAN KeysGenerated
 );

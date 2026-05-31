@@ -413,6 +413,9 @@ EFI_STATUS EFIAPI efi_main(
 		/* Display an additional warning for TPM measured boot with BitLocker */
 		if (SystemHasTpm() && SystemHasBitLocker()) {
 			RecallPrint(L"Notice: TPM and BitLocker detected.\n");
+			/* The RISC-V gcc compiler adds implicit memcpy() calls here if you declare the text
+			 * blurb inline, *LIKE WE DO EVERYWHERE ELSE ABOVE WITHOUT ISSUE*, which of course
+			 * breaks UEFI app compilation. So we have to declare a static variable. WTF?!? */
 			STATIC CONST CHAR16 *WTF_RISC_COMPILER1[] = {
 				L"TPM MEASURED BOOT WARNING",
 				L"",
@@ -734,6 +737,48 @@ process_binaries:
 	/* EDK2 provides a DeleteSecureBootVariables(), so we might as well call it. */
 	DeleteSecureBootVariables();
 
+	/* Warn if we don't have a clean slate (and we aren't in update mode) as some platforms
+	 * will screw us up there. See https://github.com/pbatard/Mosby/issues/34. */
+	if (!UpdateMode) {
+		VOID* ExistingVar;
+		UINTN ExistingSize = 0;
+		for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
+			Size = 0;
+			if (ReadVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, &Size, &ExistingVar) == EFI_SUCCESS &&
+				Size != 0) {
+				ExistingSize += Size;
+				FreePool(ExistingVar);
+			}
+		}
+		if (ExistingSize != 0)
+			RecallPrint(L"WARNING: Some Secure Boot variables are NOT cleared\n");			
+		if (ExistingSize != 0 && !gOptionSilent) {
+			STATIC CONST CHAR16 *WTF_RISC_COMPILER2[] = {
+				L"WARNING: Not all Secure Boot variables have been cleared",
+				L"",
+				L"Mosby has detected that some UEFI Secure Boot variables have  not",
+				L"been properly cleared, which may prevent writing to them.        ",
+				L"",
+				L"You are STRONGLY encouraged to go into your UEFI  firmware's  Key",
+				L"Management menu and make sure that all Secure Boot keys have been",
+				L"deleted, until you no longer  get  this  warning,  especially  if",
+				L"Mosby reported an error.                                         ",
+				L"",
+				L"Do you want to reboot into your firmare to try  to  delete  these",
+				L"variables.                                                       ",
+				NULL
+			};
+			Reboot = (ConsoleAlertBox(WTF_RISC_COMPILER2, (CONST CHAR16 *[]){ L"Yes", L"No", NULL }) == 0);
+			RecallPrintRestore();
+			if (Reboot) {
+				Status = EFI_SUCCESS;
+				if (IsOsIndicationsSupported(EFI_OS_INDICATIONS_BOOT_TO_FW_UI))
+					SetOsIndication(EFI_OS_INDICATIONS_BOOT_TO_FW_UI);
+				goto exit;
+			}
+		}
+	}
+
 install:
 	/* Install the variables, making sure that we finish with the PK. */
 	Status = EFI_NOT_FOUND;
@@ -767,8 +812,8 @@ install:
 		}
 	}
 
-	// If requested, create a NoPK.auth package, that can be used (with KeyTool or other utilities)
-	// to delete the PK and set the platform back into Setup Mode.
+	/* If requested, create a NoPK.auth package, that can be used (with KeyTool or other utilities)
+	 * to delete the PK and set the platform back into Setup Mode. */
 	if (CreateNoPkFile && !UpdateMode) {
 		MOSBY_VARIABLE NoPk = { 0 };
 		if (SimpleFileExistsByPath(gBaseImageHandle, L"NoPK.auth")) {
@@ -795,10 +840,7 @@ install:
 
 exit:
 	if (EFI_ERROR(Status) && DisplayErrorNotice && !gOptionSilent && !UpdateMode) {
-		// The RISC-V gcc compiler adds implicit memcpy() calls here if you declare the text
-		// blurb inline, *LIKE WE DO EVERYWHERE ELSE ABOVE WITHOUT ISSUE*, which of course
-		// breaks UEFI app compilation. So we have to declare a static variable. WTF?!?
-		STATIC CONST CHAR16 *WTF_RISC_COMPILER2[] = {
+		STATIC CONST CHAR16 *WTF_RISC_COMPILER3[] = {
 			L"ERROR",
 			L"",
 			L"Mosby was NOT able to install your Secure Boot variables.        ",
@@ -813,7 +855,7 @@ exit:
 			L"",
 			NULL
 		};
-		ConsoleAlertBox(WTF_RISC_COMPILER2, (CONST CHAR16 *[]){ L"OK", NULL });
+		ConsoleAlertBox(WTF_RISC_COMPILER3, (CONST CHAR16 *[]){ L"OK", NULL });
 		RecallPrintRestore();
 	}
 	for (i = 0; i < List.Size; i++) {
