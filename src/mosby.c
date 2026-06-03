@@ -215,6 +215,7 @@ EFI_STATUS EFIAPI efi_main(
 	CHAR8 DbSubject[80], PkSubject[80], *SBat = NULL, *SBatLine = NULL, *CommonName;
 	CHAR16 **Argv = NULL, **ArgvCopy, MosbyKeyPath[MAX_PATH], DefaultKeyName[ARRAY_SIZE(def)][16];
 	CHAR16 KekDescription[16][120] = { 0 };
+	NV_STORAGE_SIZE* StorageSize;
 	MOSBY_LIST List;
 
 	gBaseImageHandle = BaseImageHandle;
@@ -272,7 +273,7 @@ EFI_STATUS EFIAPI efi_main(
 					Status = ReadVariable(DefaultKeyName[k], &gEfiGlobalVariableGuid, &DefaultKey[k].Size, (VOID**)&DefaultKey[k].Data);
 #endif
 					if (EFI_ERROR(Status)) {
-						Print(L"WHY %s: %r\n", DefaultKeyName[k], Status);
+						Print(L"Notice: Failed to read %s: %r\n", DefaultKeyName[k], Status);
 						continue;
 					}
 					for (j = 0; CertFromEsl(&DefaultKey[k], j, &DefaultCert) == EFI_SUCCESS; j++) {
@@ -373,6 +374,12 @@ EFI_STATUS EFIAPI efi_main(
 		OpenLogger(gBaseImageHandle, L"Mosby.log");
 	RecallPrint(L"Mosby %a %s\n", VERSION_STRING, ARCH_EXT);
 	PrintSystemInfo();
+
+	/* Report NVRAM usage details */
+	StorageSize = GetNvStorageDetails();
+	if (StorageSize->Free != 0 && StorageSize->Total != 0)
+		RecallPrint(L"NVRAM: %d.%d/%d.%d KB used (%d.%d KB free)\n", TO_DECIMAL_KB(StorageSize->Total - StorageSize->Free),
+			TO_DECIMAL_KB(StorageSize->Total), TO_DECIMAL_KB(StorageSize->Free));
 	if (UpdateMode)
 		goto process_binaries;
 
@@ -742,7 +749,8 @@ process_binaries:
 	if (!UpdateMode) {
 		VOID* ExistingVar;
 		UINTN ExistingSize = 0;
-		for (Type = MAX_TYPES - 1; Type >= 0; Type--) {
+		/* Only check PK, KEK, DB and DBX. Existing DBT, MOK and SBAT are assumed okay. */
+		for (Type = PK; Type <= DBX; Type++) {
 			Size = 0;
 			if (ReadVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, &Size, &ExistingVar) == EFI_SUCCESS &&
 				Size != 0) {
@@ -751,7 +759,7 @@ process_binaries:
 			}
 		}
 		if (ExistingSize != 0)
-			RecallPrint(L"WARNING: Some Secure Boot variables are NOT cleared\n");			
+			RecallPrint(L"WARNING: Some Secure Boot variables are NOT cleared\n");
 		if (ExistingSize != 0 && !gOptionSilent) {
 			STATIC CONST CHAR16 *WTF_RISC_COMPILER2[] = {
 				L"WARNING: Not all Secure Boot variables have been cleared",
@@ -797,6 +805,13 @@ install:
 				RecallPrint(L"Installing %a '%a'\n", KeyInfo[Type].DisplayName, List.Entry[i].Description);
 			else
 				RecallPrint(L"Installing %a From '%s'\n", KeyInfo[Type].DisplayName, List.Entry[i].Path);
+			/* Warn if the variable is likely to overflow the NVRAM */
+			Size = (List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size :
+				 List.Entry[i].Variable.Size - (UINTN)List.Entry[i].Variable.Data->AuthInfo.Hdr.dwLength;
+			StorageSize = GetNvStorageDetails();
+			if ((StorageSize->MaxVar != 0 && Size > StorageSize->MaxVar) || (StorageSize->Free != 0 && Size > StorageSize->Free))
+				RecallPrint(L"WARNING: NVRAM may be too small (Need %d.%d KB, Allowed/Free: %d.%d/%d.%d KB\n",
+					TO_DECIMAL_KB(Size), TO_DECIMAL_KB(StorageSize->MaxVar), TO_DECIMAL_KB(StorageSize->Free));
 			Status = gRT->SetVariable(KeyInfo[Type].VariableName, KeyInfo[Type].VariableGuid, List.Entry[i].Attrs,
 					(List.Entry[i].Flags & USE_BUFFER) ? List.Entry[i].Buffer.Size : List.Entry[i].Variable.Size,
 					(List.Entry[i].Flags & USE_BUFFER) ? (VOID*)List.Entry[i].Buffer.Data : (VOID*)List.Entry[i].Variable.Data);
@@ -811,6 +826,12 @@ install:
 			}
 		}
 	}
+
+	/* Report NVRAM usage details post install */
+	StorageSize = GetNvStorageDetails();
+	if (StorageSize->Free != 0 && StorageSize->Total != 0)
+		RecallPrint(L"NVRAM: %d.%d/%d.%d KB used (%d.%d KB free)\n", TO_DECIMAL_KB(StorageSize->Total - StorageSize->Free),
+			TO_DECIMAL_KB(StorageSize->Total), TO_DECIMAL_KB(StorageSize->Free));
 
 	/* If requested, create a NoPK.auth package, that can be used (with KeyTool or other utilities)
 	 * to delete the PK and set the platform back into Setup Mode. */

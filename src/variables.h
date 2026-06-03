@@ -1,6 +1,6 @@
 /*
  * MSSB (More Secure Secure Boot -- "Mosby") Secure Boot variables handling
- * Copyright © 2024 Pete Batard <pete@akeo.ie>
+ * Copyright © 2024-2026 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+typedef struct {
+	UINT64 Total;
+	UINT64 Free;
+	UINT64 MaxVar;
+} NV_STORAGE_SIZE;
+
 EFI_STATUS CheckSetupMode(VOID);
 
 BOOLEAN IsOsIndicationsSupported(
@@ -29,3 +35,5 @@ EFI_STATUS SetOsIndication(
 BOOLEAN ExitNotice(
 	IN CONST BOOLEAN KeysGenerated
 );
+
+NV_STORAGE_SIZE* GetNvStorageDetails(VOID);

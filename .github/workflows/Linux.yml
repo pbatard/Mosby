@@ -119,7 +119,7 @@ jobs:
       run: echo "version=$(git describe --tags)" >> $GITHUB_OUTPUT
 
     - name: Download artifacts
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
 
     - name: Create release archive
       run: 7z a -tzip -r Mosby_${{ steps.set_version.outputs.version }}.zip README.md ./Mosby.nsh ./*/*.efi

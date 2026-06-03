@@ -265,3 +265,14 @@ BOOLEAN ExitNotice(
 		RecallPrint(L"Reboot operation cancelled by the user\n");
 	return Reboot;
 }
+
+/* Get the NVRAM variabls storage data. NO concurrency. */
+NV_STORAGE_SIZE* GetNvStorageDetails(VOID)
+{
+	STATIC NV_STORAGE_SIZE StorageSize;
+
+	ZeroMem(&StorageSize, sizeof(StorageSize));
+	gRT->QueryVariableInfo (EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS |
+		EFI_VARIABLE_RUNTIME_ACCESS, &StorageSize.Total, &StorageSize.Free, &StorageSize.MaxVar);
+	return &StorageSize;
+}

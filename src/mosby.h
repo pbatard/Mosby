@@ -71,6 +71,9 @@
 #define _WIDEN(s)                   L ## s
 #define WIDEN(s)                    _WIDEN(s)
 
+/* Shorthand to print a size as a 1 decimal KiloByte value */
+#define TO_DECIMAL_KB(s)            ((s) / 1024), (((s) % 1024) / 100)
+
 /* FreePool() replacement, that NULLs the freed pointer. */
 #define SafeFree(p)                 do { FreePool(p); p = NULL; } while(0)
 
