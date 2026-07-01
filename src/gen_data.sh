@@ -10,7 +10,7 @@ source['kek_2023_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239775'; ord
 # into the DBX database. However, since, even with Windows 11 25H2, MS is
 # *NOT* defaulting to boot media that are signed with the Windows UEFI CA 2023
 # credentials, and the application of KB5025885 is still a massive mess, we
-# allow users to install it as part of an XOR set with dbx_update_2024_###.bin.
+# allow users to install it as part of an XOR set with dbx_update_2024_all.bin.
 source['db_2011_win_ms.cer']='https://go.microsoft.com/fwlink/?linkid=321192'; order+=('db_2011_win_ms.cer');
 source['db_2011_3rd_ms.cer']='https://go.microsoft.com/fwlink/?linkid=321194'; order+=('db_2011_3rd_ms.cer');
 source['db_2023_win_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239776'; order+=('db_2023_win_ms.cer');
@@ -22,24 +22,15 @@ source['dbx_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main
 source['dbx_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin'; order+=('dbx_aa64.bin');
 source['dbx_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin'; order+=('dbx_arm.bin');
 # At last, Microsoft has made these available publicly!
-source['dbx_update_2024_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdate2024.bin'; order+=('dbx_update_2024_x64.bin');
-source['dbx_update_svn_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/amd64/DBXUpdateSVN.bin'; order+=('dbx_update_svn_x64.bin');
-source['dbx_update_2024_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdate2024.bin'; order+=('dbx_update_2024_ia32.bin');
-source['dbx_update_svn_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/x86/DBXUpdateSVN.bin'; order+=('dbx_update_svn_ia32.bin');
-source['dbx_update_2024_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdate2024.bin'; order+=('dbx_update_2024_aa64.bin');
-source['dbx_update_svn_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm64/DBXUpdateSVN.bin'; order+=('dbx_update_svn_aa64.bin');
-source['dbx_update_2024_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdate2024.bin'; order+=('dbx_update_2024_arm.bin');
-source['dbx_update_svn_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/arm/DBXUpdateSVN.bin'; order+=('dbx_update_svn_arm.bin');
+source['dbx_update_2024_all.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/DBXUpdate2024.bin'; order+=('dbx_update_2024_all.bin');
+source['dbx_update_svn_all.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/DBXUpdateSVN.bin'; order+=('dbx_update_svn_all.bin');
 # Shim does not provide an SBatLevel.txt we can download, so we currently use our own.
 # See: https://github.com/rhboot/shim/issues/685
 source['sbat_level.txt']='https://github.com/pbatard/Mosby/raw/main/data/sbat_level.txt'; order+=('sbat_level.txt');
 
 declare -A exclusive_set=(
   ['db_2011_win_ms.cer']='MOSBY_SET1'
-  ['dbx_update_2024_x64.bin']='MOSBY_SET2'
-  ['dbx_update_2024_ia32.bin']='MOSBY_SET2'
-  ['dbx_update_2024_aa64.bin']='MOSBY_SET2'
-  ['dbx_update_2024_arm.bin']='MOSBY_SET2'
+  ['dbx_update_2024_all.bin']='MOSBY_SET2'
 )
 
 # Optional description for specific files
@@ -49,23 +40,17 @@ declare -A exclusive_set=(
 # Oh, and despite this opening the door for rollback attacks, Microsoft is refusing
 # to budge on this per https://github.com/microsoft/secureboot_objects/issues/157.
 # NB: DBX date is the date of the commit that updated the post signed objects.
-# SVN number and date can be obtained from the "svns" section of the latest .json
-# at https://github.com/microsoft/secureboot_objects/tree/main/PreSignedObjects/DBX.
+# SVN number and date can be obtained from the "svns" section of the latest .json at
+# https://github.com/microsoft/secureboot_objects/blob/main/PreSignedObjects/DBX/dbx_info_msft_latest.json#:~:text=svn
 # And yes, technically, there's more than the Bootmgr SVN in there, but what we are
 # really interested in, and want to report to the user, is the Bootmgr SVN value.
 declare -A description=(
-  ['dbx_x64.bin']='DBX for x86 (64 bit) [2025.10.16]'
-  ['dbx_ia32.bin']='DBX for x86 (32 bit) [2025.10.16]'
+  ['dbx_x64.bin']='DBX for x86 (64 bit) [2026.06.30]'
+  ['dbx_ia32.bin']='DBX for x86 (32 bit) [2025.06.30]'
   ['dbx_aa64.bin']='DBX for ARM (64 bit) [2025.02.24]'
   ['dbx_arm.bin']='DBX for ARM (32 bit) [2025.02.24]'
-  ['dbx_update_2024_x64.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
-  ['dbx_update_svn_x64.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  ['dbx_update_2024_ia32.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
-  ['dbx_update_svn_ia32.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  ['dbx_update_2024_aa64.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
-  ['dbx_update_svn_aa64.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
-  ['dbx_update_2024_arm.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
-  ['dbx_update_svn_arm.bin']="Windows Bootmgr SVN 7.0 DBX update [2025-06-06]"
+  ['dbx_update_2024_all.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
+  ['dbx_update_svn_all.bin']="Windows Bootmgr SVN 9.0 DBX update [2026-06-10]"
 )
 
 declare -A archguard=(
