@@ -17,10 +17,10 @@ source['db_2023_win_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239776'; 
 source['db_2023_3rd_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2239872'; order+=('db_2023_3rd_ms.cer');
 source['db_2023_opt_ms.cer']='https://go.microsoft.com/fwlink/?linkid=2284009'; order+=('db_2023_opt_ms.cer');
 # https://github.com/microsoft/secureboot_objects is now THE reference for all DBX binaries
-source['dbx_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/amd64/DBXUpdate.bin'; order+=('dbx_x64.bin');
-source['dbx_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/x86/DBXUpdate.bin'; order+=('dbx_ia32.bin');
-source['dbx_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm64/DBXUpdate.bin'; order+=('dbx_aa64.bin');
-source['dbx_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/DBX/arm/DBXUpdate.bin'; order+=('dbx_arm.bin');
+source['dbx_x64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/SignedByKEK2023/dbx_x64.efiauth2'; order+=('dbx_x64.bin');
+source['dbx_ia32.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/SignedByKEK2023/dbx_ia32.efiauth2'; order+=('dbx_ia32.bin');
+source['dbx_aa64.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/SignedByKEK2023/dbx_aarch64.efiauth2'; order+=('dbx_aa64.bin');
+source['dbx_arm.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/SignedByKEK2023/dbx_arm.efiauth2'; order+=('dbx_arm.bin');
 # At last, Microsoft has made these available publicly!
 source['dbx_update_2024_all.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/DBXUpdate2024.bin'; order+=('dbx_update_2024_all.bin');
 source['dbx_update_svn_all.bin']='https://github.com/microsoft/secureboot_objects/raw/main/PostSignedObjects/Optional/DBX/DBXUpdateSVN.bin'; order+=('dbx_update_svn_all.bin');
@@ -50,7 +50,7 @@ declare -A description=(
   ['dbx_aa64.bin']='DBX for ARM (64 bit) [2025.02.24]'
   ['dbx_arm.bin']='DBX for ARM (32 bit) [2025.02.24]'
   ['dbx_update_2024_all.bin']="Revocation of 'Microsoft Windows Production PCA 2011'"
-  ['dbx_update_svn_all.bin']="Windows Bootmgr SVN 9.0 DBX update [2026-06-10]"
+  ['dbx_update_svn_all.bin']="Windows Bootmgr SVN 9.0 DBX update [2026-05-21]"
 )
 
 declare -A archguard=(
