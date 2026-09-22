@@ -16,6 +16,7 @@ on:
 
 env:
   BUILD_TYPE: RELEASE
+  EDK2_STABLE_TAG: edk2-stable202508.01
   COMPILER: GCC5
   GCC5_ARM_PREFIX: arm-linux-gnueabi-
   GCC5_AARCH64_PREFIX: aarch64-linux-gnu-
@@ -51,9 +52,8 @@ jobs:
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
-        submodules: recursive
         fetch-depth: 0
 
     - name: Set version
@@ -63,7 +63,7 @@ jobs:
     - name: Create version.h file
       run: |
         git update-index --skip-worktree src/version.h
-        echo '#define VERSION_STRING "${{steps.set_version.outputs.version}}"' > src/version.h
+        echo '#define VERSION_STRING "${{ steps.set_version.outputs.version }}"' > src/version.h
 
     - name: Set up Linux environment
       run: |
@@ -77,6 +77,7 @@ jobs:
 
     - name: Set up EDK2
       run: |
+        git clone --depth 1 --branch ${{ env.EDK2_STABLE_TAG }} --recurse-submodules https://github.com/tianocore/edk2.git
         # We must patch EDK2's OpenSSL module to be able to import/export certificates and keys
         patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
         # And we must patch OpenSSL itself to fix ARM, RISCV64 and LOONGARCH compilation
@@ -110,7 +111,7 @@ jobs:
     needs: build
     steps:
     - name: Check out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
 

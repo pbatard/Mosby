@@ -156,12 +156,17 @@ something like:
 
 ```
 cd <directory where you cloned Mosby>
-git submodule update --init
+git clone --depth 1 --branch edk2-stable202508.01 --recurse-submodules https://github.com/tianocore/edk2.git
 export WORKSPACE=$PWD
 export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
 source edk2/edksetup.sh
 build -a X64 -b RELEASE -t GCC5 -p MosbyPkg.dsc
 ```
+
+Be mindful to use the same tagged **stable** release of EDK2 that Mosby uses (which you can
+get from the `EDK2_STABLE_TAG` in `.github/workflows/Linux.yml`) as this is the one to which
+the OpenSSL patch can apply cleanly and also because more recent versions of EDK2 may break
+or deprecate features (such as the ability to compile for 32-bit ARM).
 
 Note that, if you have `bash` with `curl`, `OpenSSL` and `sed` installed, you can recreate
 `data.c` by running the following command in the `src/` directory:
