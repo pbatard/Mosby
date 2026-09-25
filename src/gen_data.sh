@@ -89,8 +89,8 @@ cat << EOF
 EOF
 
 for file in "${order[@]}"; do
-  # '-o' will try to use an override from the current repo
-  if [[ "$1" == "-o" &&  -f ../data/${file} ]]; then
+  # Since we push them, SBAT updates are read locally
+  if [[ -f ../data/${file} ]]; then
     cp ../data/${file} .
   else
     curl -f -s -L ${source[${file}]} -o ${file} || { echo "Failed to retreive ${source[${file}]}"; exit 1; }

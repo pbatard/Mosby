@@ -157,6 +157,8 @@ something like:
 ```
 cd <directory where you cloned Mosby>
 git clone --depth 1 --branch edk2-stable202508.01 --recurse-submodules https://github.com/tianocore/edk2.git
+make -C edk2/BaseTools
+patch --binary -d edk2 -p1 -i ../Add-extra-PKCS-encoding-and-decoding-to-OpensslLibFull.patch
 export WORKSPACE=$PWD
 export PACKAGES_PATH=$WORKSPACE:$WORKSPACE/edk2
 source edk2/edksetup.sh
