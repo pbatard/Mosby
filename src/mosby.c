@@ -202,8 +202,8 @@ EFI_STATUS EFIAPI efi_main(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	BOOLEAN TestMode = FALSE, AddDBCred = TRUE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
-	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE, AddDefaults = FALSE;
+	BOOLEAN TestMode = FALSE, AddDbCred = TRUE, GenDBCred = FALSE, UpdateMode = FALSE, CreateNoPkFile = FALSE;
+	BOOLEAN Reboot = FALSE, LogToFile = TRUE, DisplayErrorNotice = FALSE, AddDefaults = FALSE, AddKekCred = FALSE;
 	EFI_STATUS Status;
 	EFI_TIME Time = { 0 };
 	UINT8 Set = MOSBY_SET1;
@@ -232,8 +232,8 @@ EFI_STATUS EFIAPI efi_main(
 		while (Argc > 1) {
 			if (StrCmp(ArgvCopy[1], L"-h") == 0) {
 				Print(L"Usage: Mosby [-h][-i][-r][-s][-t][-u][-v][-x][-var <file>][-var <file>][...]\n");
-				Print(L"       Additional options: [--create-nopk][--no-log][--no-mosby-db]\n");
-				Print(L"       Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
+				Print(L"  Additional options: [--add-to-kek][--create-nopk][--no-log][--no-mosby-db]\n");
+				Print(L"  Supported var values: pk, kek, db, dbx, dbt, mok, sbat\n");
 				goto exit;
 			} else if (StrCmp(ArgvCopy[1], L"-i") == 0) {
 				Print(L"Embedded data:\n");
@@ -307,7 +307,11 @@ EFI_STATUS EFIAPI efi_main(
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"--no-mosby-db") == 0) {
-				AddDBCred = FALSE;
+				AddDbCred = FALSE;
+				ArgvCopy += 1;
+				Argc -= 1;
+			} else if (StrCmp(ArgvCopy[1], L"--add-to-kek") == 0) {
+				AddKekCred = TRUE;
 				ArgvCopy += 1;
 				Argc -= 1;
 			} else if (StrCmp(ArgvCopy[1], L"-r") == 0) {
@@ -448,19 +452,29 @@ EFI_STATUS EFIAPI efi_main(
 	}
 
 	/* If we have an existing cert for a previously generated DB credential, try to reuse it */
-	if (AddDBCred) {
+	if (AddDbCred || AddKekCred) {
 		UnicodeSPrint(MosbyKeyPath, ARRAY_SIZE(MosbyKeyPath), L"%a.crt", MOSBY_CRED_NAME);
 		if (SimpleFileExistsByPath(gBaseImageHandle, MosbyKeyPath)) {
-			if (List.Size >= MOSBY_MAX_LIST_SIZE)
-				Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
-			RecallPrint(L"Reusing existing %s certificate...\n", MosbyKeyPath);
-			List.Entry[List.Size].Type = DB;
-			List.Entry[List.Size].Path = MosbyKeyPath;
-			List.Size++;
+			if (AddDbCred) {
+				if (List.Size >= MOSBY_MAX_LIST_SIZE)
+					Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
+				RecallPrint(L"Reusing existing %s certificate for DB...\n", MosbyKeyPath);
+				List.Entry[List.Size].Type = DB;
+				List.Entry[List.Size].Path = MosbyKeyPath;
+				List.Size++;
+			}
+			if (AddKekCred) {
+				if (List.Size >= MOSBY_MAX_LIST_SIZE)
+					Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
+				RecallPrint(L"Reusing existing %s certificate for KEK...\n", MosbyKeyPath);
+				List.Entry[List.Size].Type = KEK;
+				List.Entry[List.Size].Path = MosbyKeyPath;
+				List.Size++;
+			}
 		} else {
 			Sel = ConsoleSelect(
 				(CONST CHAR16 *[]){
-					L"DB credentials installation",
+					L"Credential installation",
 					L"",
 					L"Do you want to SELECT an existing Secure Boot signing certificate",
 					L"or GENERATE new Secure Boot signing credentials (or DON'T INSTALL",
@@ -625,33 +639,47 @@ process_binaries:
 	if (UpdateMode)
 		goto install;
 
-	/* Generate DB credentials if requested */
+	/* Generate and add DB/KEK credentials if requested */
 	if (GenDBCred) {
-		if (List.Size >= MOSBY_MAX_LIST_SIZE)
-			Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
-		i = List.Size;
-		RecallPrint(L"Generating Secure Boot DB signing credentials...\n");
-		List.Entry[i].Type = DB;
+		MOSBY_ENTRY Entry = { 0 };
+		RecallPrint(L"Generating signing credentials...\n");
 		AsciiSPrint(DbSubject, sizeof(DbSubject), "%a [%04d.%02d.%02d]",
 			MOSBY_CRED_NAME, Time.Year, Time.Month, Time.Day);
-		List.Entry[i].Description = DbSubject;
+		Entry.Description = DbSubject;
 		Status = GenerateCredentials(DbSubject, &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		Status = CertToAuthVar(DbCred.Cert, &List.Entry[i]);
+		Status = CertToAuthVar(DbCred.Cert, &Entry);
 		if (EFI_ERROR(Status))
 			goto exit;
 		Status = SaveCredentials(WIDEN(MOSBY_CRED_NAME), &DbCred);
 		if (EFI_ERROR(Status))
 			goto exit;
-		RecallPrint(L"Saved Secure Boot DB signing credentials as '%a'\n", MOSBY_CRED_NAME);
+		RecallPrint(L"Saved signing credentials as '%a'\n", MOSBY_CRED_NAME);
+		Entry.Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
 
-		List.Entry[i].Attrs = UEFI_VAR_NV_BS_RT_AT_AP;
-		Status = SignAuthVar(KeyInfo[DB].VariableName, KeyInfo[DB].VariableGuid,
-			List.Entry[i].Attrs, &List.Entry[i].Variable, &PkCred);
-		if (EFI_ERROR(Status))
-			ReportErrorAndExit(L"Failed to sign DB\n");
-		List.Size++;
+		if (AddDbCred) {
+			if (List.Size >= MOSBY_MAX_LIST_SIZE)
+				Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
+			CopyMem(&List.Entry[List.Size], &Entry, sizeof(Entry));
+			List.Entry[List.Size].Type = DB;
+			Status = SignAuthVar(KeyInfo[DB].VariableName, KeyInfo[DB].VariableGuid,
+				List.Entry[List.Size].Attrs, &List.Entry[List.Size].Variable, &PkCred);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to sign DB\n");
+			List.Size++;
+		}
+		if (AddKekCred) {
+			if (List.Size >= MOSBY_MAX_LIST_SIZE)
+				Abort(EFI_OUT_OF_RESOURCES, L"List size is too small\n");
+			CopyMem(&List.Entry[List.Size], &Entry, sizeof(Entry));
+			List.Entry[List.Size].Type = KEK;
+			Status = SignAuthVar(KeyInfo[KEK].VariableName, KeyInfo[KEK].VariableGuid,
+				List.Entry[List.Size].Attrs, &List.Entry[List.Size].Variable, &PkCred);
+			if (EFI_ERROR(Status))
+				ReportErrorAndExit(L"Failed to sign KEK\n");
+			List.Size++;
+		}
 	}
 
 	/* Set up the PK if none was specified */

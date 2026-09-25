@@ -132,9 +132,10 @@ parameters.
 
 #### Additional parameters
 
-* `--create-nopk`: Create a `NoPK.auth` PK deletion package (that can be used with KeyTool).
-* `--no-log`:      Disable file logging (Output will not be logged into `Mosby.log`).
-* `--no-mosby-db`: Don't install the MosbyKey DB credentials for bootloader signing.
+* `--add-to-kek`  : Also add MosbyKey to the KEK store (default is DB only).
+* `--create-nopk` : Create a `NoPK.auth` PK deletion package (that can be used with KeyTool).
+* `--no-log`      : Disable file logging (Output will not be logged into `Mosby.log`).
+* `--no-mosby-db` : Don't install the MosbyKey DB credentials for bootloader signing.
 
 ## Compilation
 
