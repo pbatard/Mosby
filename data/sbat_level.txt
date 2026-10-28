@@ -1,3 +1,4 @@
-sbat,1,2025112400
+sbat,1,2026102600
 shim,4
-grub,6
+grub,7
+fwupd-efi,2
